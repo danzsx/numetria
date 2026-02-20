@@ -23,7 +23,8 @@ export const sessionService = {
     analysis: ReturnType<typeof analyzeFeedback>,
     attempts: ProblemAttempt[],
     startedAt: Date,
-    conceptId?: number | null
+    conceptId?: number | null,
+    lessonNumber?: number | null
   ): Promise<SessionResult> {
     const payload = {
       operation: config.operation,
@@ -32,7 +33,7 @@ export const sessionService = {
       timer_mode: config.timerMode,
       level: getLevel(config),
       concept_id: conceptId ?? null,
-      lesson_number: null,
+      lesson_number: lessonNumber ?? null,
       total_problems: metrics.totalProblems,
       correct_answers: metrics.correctAnswers,
       total_time_ms: metrics.totalTime,

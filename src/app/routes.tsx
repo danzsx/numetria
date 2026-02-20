@@ -8,6 +8,8 @@ import Pro from './pages/Pro'
 import TabuadaSetup from './pages/TabuadaSetup'
 import TabuadaTraining from './pages/TabuadaTraining'
 import TabuadaResult from './pages/TabuadaResult'
+import LessonExecution from './pages/LessonExecution'
+import LessonResult from './pages/LessonResult'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import ForgotPassword from './pages/ForgotPassword'
@@ -34,6 +36,8 @@ export const router = createBrowserRouter([
       { path: 'tabuada/setup', Component: TabuadaSetup },
       { path: 'tabuada/training', Component: TabuadaTraining },
       { path: 'tabuada/result', Component: TabuadaResult },
+      { path: 'lesson/:conceptId/:lessonNumber', Component: LessonExecution },
+      { path: 'lesson/:conceptId/:lessonNumber/result', Component: LessonResult },
     ],
   },
 

@@ -54,8 +54,11 @@ function conceptProgressToLessons(cp: ConceptProgress | null) {
   const l2 = toStatus(cp.lesson_2_status);
   const l3 = toStatus(cp.lesson_3_status);
 
-  // Conceito in_progress sem lição 1 ainda → disponibilizar lição 1
-  const effectiveL1 = cp.status === 'in_progress' && l1 === 'locked' ? 'available' : l1;
+  // Conceito available ou in_progress sem lição 1 iniciada → disponibilizar lição 1
+  const effectiveL1 =
+    (cp.status === 'available' || cp.status === 'in_progress') && l1 === 'locked'
+      ? 'available'
+      : l1;
 
   return [
     { id: 1, name: 'Estrutura',  status: effectiveL1 },
@@ -350,7 +353,7 @@ function ModuleDetail({ moduleId }: { moduleId: string }) {
                           </div>
 
                           {lesson.status === 'available' && (
-                            <Link to="/training">
+                            <Link to={`/lesson/${concept.id}/${lesson.id}`}>
                               <ActionButton variant="primary" className="!py-1 !px-4 !text-sm">
                                 Iniciar
                               </ActionButton>

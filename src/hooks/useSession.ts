@@ -28,14 +28,22 @@ export function useSession() {
   const startedAtRef = useRef<Date>(new Date())
   const attemptsRef = useRef<ProblemAttempt[]>([])
   const configRef = useRef<TabuadaConfig | null>(null)
+  const conceptIdRef = useRef<number | null>(null)
+  const lessonNumberRef = useRef<number | null>(null)
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const startSession = useCallback((config: TabuadaConfig) => {
+  const startSession = useCallback((
+    config: TabuadaConfig,
+    conceptId?: number | null,
+    lessonNumber?: number | null
+  ) => {
     startedAtRef.current = new Date()
     attemptsRef.current = []
     configRef.current = config
+    conceptIdRef.current = conceptId ?? null
+    lessonNumberRef.current = lessonNumber ?? null
     setSaveError(null)
   }, [])
 
@@ -67,7 +75,9 @@ export function useSession() {
           metrics,
           analysis,
           attemptsRef.current,
-          startedAtRef.current
+          startedAtRef.current,
+          conceptIdRef.current,
+          lessonNumberRef.current
         )
         return { metrics, analysis, result }
       } catch (err) {
