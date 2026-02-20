@@ -1,25 +1,107 @@
-import { Header } from '../components/Header';
-import { Footer } from '../components/Footer';
-import { MobileNav } from '../components/MobileNav';
-import { BlueprintCard } from '../components/BlueprintCard';
-import { ActionButton } from '../components/ActionButton';
-import { CheckCircle2 } from 'lucide-react';
+import { useEffect, useState } from 'react'
+import { Header } from '../components/Header'
+import { Footer } from '../components/Footer'
+import { MobileNav } from '../components/MobileNav'
+import { BlueprintCard } from '../components/BlueprintCard'
+import { ActionButton } from '../components/ActionButton'
+import { CheckCircle2 } from 'lucide-react'
+import { useAuth } from '../../contexts/AuthContext'
+import { userService, type PlanStatus } from '../../services/user.service'
 
 export default function Pro() {
+  const { user } = useAuth()
+  const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [statusLoading, setStatusLoading] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
   const features = [
-    'Acesso completo aos módulos Automação, Ritmo e Precisão',
-    'Métricas avançadas de variação cognitiva',
-    'Análise de padrão e distribuição de erro',
-    'Histórico ilimitado com visualização comparativa',
-    'Exportação de dados para análise externa',
-    'Personalização de intervalos e ritmo de treino',
-    'Suporte técnico prioritário'
-  ];
+    'Acesso completo aos modulos Automacao, Ritmo e Precisao',
+    'Metricas avancadas de variacao cognitiva',
+    'Analise de padrao e distribuicao de erro',
+    'Historico ilimitado com visualizacao comparativa',
+    'Exportacao de dados para analise externa',
+    'Personalizacao de intervalos e ritmo de treino',
+    'Suporte tecnico prioritario',
+  ]
+
+  useEffect(() => {
+    if (!user) {
+      setPlanStatus(null)
+      return
+    }
+
+    let mounted = true
+
+    async function loadPlanStatus() {
+      setStatusLoading(true)
+      setError(null)
+      try {
+        const status = await userService.getPlanStatus()
+        if (mounted) setPlanStatus(status)
+      } catch (err) {
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Nao foi possivel carregar o plano')
+        }
+      } finally {
+        if (mounted) setStatusLoading(false)
+      }
+    }
+
+    loadPlanStatus()
+
+    return () => {
+      mounted = false
+    }
+  }, [user])
+
+  const handleUpgrade = async (priceId: 'monthly' | 'annual') => {
+    if (!user) {
+      setError('Faca login para realizar upgrade para o Pro')
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    setMessage(null)
+
+    try {
+      const result = await userService.createCheckoutSession(priceId)
+      setMessage(result.message)
+      if (result.checkout_url) {
+        window.location.assign(result.checkout_url)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel iniciar o checkout')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCancel = async () => {
+    setLoading(true)
+    setError(null)
+    setMessage(null)
+
+    try {
+      const result = await userService.cancelSubscription()
+      setMessage(result.message)
+      const status = await userService.getPlanStatus()
+      setPlanStatus(status)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao cancelar plano')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const isPro = planStatus?.is_active ?? false
 
   return (
     <div className="min-h-screen">
-      <Header isLoggedIn={true} />
-      
+      <Header isLoggedIn={Boolean(user)} />
+
       <main className="pt-24 pb-16 px-6 mb-16 md:mb-0">
         <div className="max-w-3xl mx-auto">
           <div className="mb-12 text-center">
@@ -30,17 +112,40 @@ export default function Pro() {
               Protocolo completo de treino cognitivo
             </h1>
             <p className="text-lg text-[var(--nm-text-dimmed)] max-w-2xl mx-auto">
-              Acesso irrestrito ao sistema proprietário de progressão técnica. 
-              Mensuração avançada, análise de padrão cognitivo e histórico completo.
+              Acesso irrestrito ao sistema proprietario de progressao tecnica.
+              Mensuracao avancada, analise de padrao cognitivo e historico completo.
             </p>
           </div>
 
-          {/* Features */}
+          {(message || error) && (
+            <div className="mb-6">
+              <BlueprintCard label={error ? 'ERRO' : 'STATUS'}>
+                <p className={error ? 'text-[var(--nm-accent-error)]' : 'text-[var(--nm-accent-stability)]'}>
+                  {error ?? message}
+                </p>
+              </BlueprintCard>
+            </div>
+          )}
+
+          {(statusLoading || planStatus) && (
+            <div className="mb-6">
+              <BlueprintCard label="PLANO_ATUAL">
+                <p className="text-[var(--nm-text-dimmed)]">
+                  {statusLoading
+                    ? 'Verificando status do plano...'
+                    : isPro
+                    ? 'Voce esta com plano Pro ativo.'
+                    : 'Voce esta no plano Free.'}
+                </p>
+              </BlueprintCard>
+            </div>
+          )}
+
           <section className="mb-12">
             <BlueprintCard label="FEATURES">
               <div className="space-y-4">
-                {features.map((feature, index) => (
-                  <div key={index} className="flex items-start gap-3">
+                {features.map((feature) => (
+                  <div key={feature} className="flex items-start gap-3">
                     <CheckCircle2 size={20} className="text-[var(--nm-accent-primary)] flex-shrink-0 mt-0.5" />
                     <span className="text-[var(--nm-text-high)]">{feature}</span>
                   </div>
@@ -49,7 +154,6 @@ export default function Pro() {
             </BlueprintCard>
           </section>
 
-          {/* Pricing */}
           <section className="mb-12">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <BlueprintCard label="MONTHLY">
@@ -57,11 +161,14 @@ export default function Pro() {
                   <div className="text-4xl font-[family-name:var(--font-data)] font-semibold text-[var(--nm-text-high)] tabular-nums mb-2">
                     R$ 49
                   </div>
-                  <div className="text-sm text-[var(--nm-text-dimmed)] mb-6">
-                    por mês
-                  </div>
-                  <ActionButton variant="ghost" className="w-full">
-                    Selecionar mensal
+                  <div className="text-sm text-[var(--nm-text-dimmed)] mb-6">por mes</div>
+                  <ActionButton
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => handleUpgrade('monthly')}
+                    disabled={loading}
+                  >
+                    {loading ? 'Processando...' : 'Selecionar mensal'}
                   </ActionButton>
                 </div>
               </BlueprintCard>
@@ -71,57 +178,67 @@ export default function Pro() {
                   <div className="text-4xl font-[family-name:var(--font-data)] font-semibold text-[var(--nm-text-high)] tabular-nums mb-2">
                     R$ 490
                   </div>
-                  <div className="text-sm text-[var(--nm-text-dimmed)] mb-2">
-                    por ano
-                  </div>
+                  <div className="text-sm text-[var(--nm-text-dimmed)] mb-2">por ano</div>
                   <div className="text-xs text-[var(--nm-accent-stability)] font-[family-name:var(--font-data)] mb-6">
                     2 MESES_GRATIS
                   </div>
-                  <ActionButton variant="primary" className="w-full">
-                    Selecionar anual
+                  <ActionButton
+                    variant="primary"
+                    className="w-full"
+                    onClick={() => handleUpgrade('annual')}
+                    disabled={loading}
+                  >
+                    {loading ? 'Processando...' : 'Selecionar anual'}
                   </ActionButton>
                 </div>
               </BlueprintCard>
             </div>
           </section>
 
-          {/* Technical Details */}
           <section>
             <BlueprintCard label="TECHNICAL_INFO">
-              <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-4">
-                Detalhes técnicos
-              </h3>
-              
+              <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-4">Detalhes tecnicos</h3>
+
               <div className="space-y-4 text-sm text-[var(--nm-text-dimmed)]">
                 <p>
-                  O Protocolo Pro desbloqueia módulos avançados de treino estruturado: 
-                  Automação (compressão de processos), Ritmo (incremento de velocidade) 
-                  e Precisão (redução de variação).
+                  O Protocolo Pro desbloqueia modulos avancados de treino estruturado:
+                  Automacao (compressao de processos), Ritmo (incremento de velocidade)
+                  e Precisao (reducao de variacao).
                 </p>
-                
+
                 <p>
-                  Métricas avançadas incluem análise de distribuição de erro, 
-                  índice de estabilidade neural e variação temporal. 
-                  Histórico completo permite visualização longitudinal da progressão.
+                  Metricas avancadas incluem analise de distribuicao de erro,
+                  indice de estabilidade neural e variacao temporal.
+                  Historico completo permite visualizacao longitudinal da progressao.
                 </p>
-                
+
                 <p>
-                  Pagamento seguro processado via Stripe. 
-                  Cancelamento a qualquer momento sem complicação. 
-                  Dados permanecem privados e não são compartilhados.
+                  Pagamento seguro processado via Stripe.
+                  Cancelamento a qualquer momento sem complicacao.
+                  Dados permanecem privados e nao sao compartilhados.
                 </p>
               </div>
             </BlueprintCard>
           </section>
 
-          {/* CTA */}
           <div className="text-center mt-12 pt-12 border-t border-[var(--nm-grid-line)]">
-            <p className="text-[var(--nm-text-dimmed)] mb-6">
-              Comece a construir confiança cognitiva mensurável hoje.
-            </p>
-            <ActionButton variant="primary">
-              Acesse o protocolo completo
-            </ActionButton>
+            {isPro ? (
+              <>
+                <p className="text-[var(--nm-text-dimmed)] mb-6">Seu plano Pro esta ativo.</p>
+                <ActionButton variant="ghost" onClick={handleCancel} disabled={loading}>
+                  {loading ? 'Processando...' : 'Cancelar plano Pro'}
+                </ActionButton>
+              </>
+            ) : (
+              <>
+                <p className="text-[var(--nm-text-dimmed)] mb-6">
+                  Comece a construir confianca cognitiva mensuravel hoje.
+                </p>
+                <ActionButton variant="primary" onClick={() => handleUpgrade('annual')} disabled={loading}>
+                  {loading ? 'Processando...' : 'Acesse o protocolo completo'}
+                </ActionButton>
+              </>
+            )}
           </div>
         </div>
       </main>
@@ -129,5 +246,5 @@ export default function Pro() {
       <Footer />
       <MobileNav />
     </div>
-  );
+  )
 }

@@ -14,6 +14,7 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import ForgotPassword from './pages/ForgotPassword'
 import ProtectedLayout from './components/ProtectedLayout'
+import ProLayout from './components/ProLayout'
 
 export const router = createBrowserRouter([
   // ─── Rotas públicas ───────────────────────────────────────
@@ -36,8 +37,13 @@ export const router = createBrowserRouter([
       { path: 'tabuada/setup', Component: TabuadaSetup },
       { path: 'tabuada/training', Component: TabuadaTraining },
       { path: 'tabuada/result', Component: TabuadaResult },
-      { path: 'lesson/:conceptId/:lessonNumber', Component: LessonExecution },
-      { path: 'lesson/:conceptId/:lessonNumber/result', Component: LessonResult },
+      {
+        Component: ProLayout,
+        children: [
+          { path: 'lesson/:conceptId/:lessonNumber', Component: LessonExecution },
+          { path: 'lesson/:conceptId/:lessonNumber/result', Component: LessonResult },
+        ],
+      },
     ],
   },
 

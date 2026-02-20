@@ -300,6 +300,14 @@ export interface Database {
         Args: { session_data: Json }
         Returns: Json
       }
+      cancel_my_pro_subscription: {
+        Args: Record<string, never>
+        Returns: Json
+      }
+      get_plan_access: {
+        Args: Record<string, never>
+        Returns: Json
+      }
       get_user_dashboard: {
         Args: { p_user_id: string }
         Returns: Json
