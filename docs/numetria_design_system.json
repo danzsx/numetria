@@ -1,0 +1,126 @@
+{
+  "meta": {
+    "name": "Numetria Elite Protocol",
+    "version": "1.1.0",
+    "archetype": "The Silent Mentor",
+    "philosophy": "Luxo Silencioso + Precisão Técnica (Blueprint Aesthetic)",
+    "last_update": "2026-02-19"
+  },
+  "tokens": {
+    "color": {
+      "base": {
+        "background": "#121417",
+        "surface": "#1A1F24",
+        "grid_line": "rgba(154, 166, 178, 0.08)"
+      },
+      "accent": {
+        "primary_focus": "#3A72F8",
+        "stability_green": "#4DBA87",
+        "cold_error": "#5A6675" 
+      },
+      "text": {
+        "high_contrast": "#E7EDF3",
+        "dimmed": "#9AA6B2",
+        "annotation": "rgba(154, 166, 178, 0.5)"
+      }
+    },
+    "typography": {
+      "strategy": "Hybrid Cognitive Layering",
+      "font_families": {
+        "prose": "Inter, system-ui, sans-serif",
+        "data": "JetBrains Mono, monospace"
+      },
+      "scale": {
+        "hero_num": {
+          "font": "data",
+          "size": "80px",
+          "weight": 600,
+          "features": "tabular-nums, lining-nums"
+        },
+        "blueprint_label": {
+          "font": "data",
+          "size": "10px",
+          "case": "uppercase",
+          "tracking": "0.15em"
+        },
+        "body": {
+          "font": "prose",
+          "size": "16px",
+          "line_height": 1.6
+        }
+      }
+    },
+    "geometry": {
+      "radius": {
+        "technical": "4px",
+        "sharp": "0px"
+      },
+      "border": {
+        "thin": "1px solid",
+        "focus": "2px solid"
+      }
+    },
+    "spacing": {
+      "base_unit": 4,
+      "container_max_width": "720px",
+      "layout_priority": "Negative space over decorative elements"
+    }
+  },
+  "components": {
+    "blueprint_card": {
+      "bg": "surface",
+      "radius": "technical",
+      "border": "grid_line",
+      "annotations": {
+        "top_left": "Module_ID // 2026",
+        "bottom_right": "Stability_Index_Active",
+        "style": "blueprint_label"
+      }
+    },
+    "input_field": {
+      "style": "Ghost Technical",
+      "bg": "transparent",
+      "border_bottom": "dimmed",
+      "focus_color": "primary_focus",
+      "error_state": {
+        "border_color": "cold_error",
+        "shake_intensity": "subtle"
+      }
+    },
+    "action_button": {
+      "primary": {
+        "bg": "primary_focus",
+        "text": "high_contrast",
+        "radius": "technical",
+        "padding": "12px 24px"
+      },
+      "ghost": {
+        "border": "dimmed",
+        "text": "dimmed",
+        "hover": "primary_focus"
+      }
+    }
+  },
+  "motion": {
+    "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "duration": {
+      "instant": "150ms",
+      "standard": "250ms"
+    },
+    "logic": {
+      "no_red_flash": true,
+      "feedback": "Desaturação rítmica em vez de alertas luminosos"
+    }
+  },
+  "ux_principles": {
+    "focus_mode": {
+      "central_number_isolation": true,
+      "background_dim_level": "90%",
+      "haptic_feedback": "Short_Sharp"
+    },
+    "error_handling": {
+      "philosophy": "Neutral Correction",
+      "description": "Erros não são punições, são dados para recalibração."
+    }
+  }
+}
