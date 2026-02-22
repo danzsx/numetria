@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router'
 import { Header } from '../components/Header'
 import { Footer } from '../components/Footer'
@@ -7,6 +8,7 @@ import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts'
 import { Lock } from 'lucide-react'
 import { useMetrics } from '../../hooks/useMetrics'
 import { useAuth } from '../../contexts/AuthContext'
+import { userService } from '../../services/user.service'
 import type { ConceptProgress, DailyMetric } from '../../types/database'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -17,20 +19,20 @@ function avg(values: (number | null)[]): number | null {
   return valid.reduce((a, b) => a + b, 0) / valid.length
 }
 
-function calcModuleProgress(
+function calcModuleProgressWeighted(
   summary: ConceptProgress[],
   fromId: number,
-  toId: number,
-  total: number
+  toId: number
 ): number {
-  if (summary.length === 0) return 0
-  const done = summary.filter(
-    (c) =>
-      c.concept_id >= fromId &&
-      c.concept_id <= toId &&
-      (c.status === 'completed' || c.status === 'mastered')
-  ).length
-  return total > 0 ? Math.round((done / total) * 100) : 0
+  const inRange = summary.filter(c => c.concept_id >= fromId && c.concept_id <= toId)
+  if (inRange.length === 0) return 0
+  const totalWeight = inRange.reduce((acc, c) => {
+    if (c.status === 'mastered')    return acc + 100
+    if (c.status === 'completed')   return acc + 75
+    if (c.status === 'in_progress') return acc + 30
+    return acc
+  }, 0)
+  return Math.round(totalWeight / inRange.length)
 }
 
 function formatToday(): string {
@@ -56,6 +58,11 @@ function Skeleton({ className }: { className?: string }) {
 export default function Dashboard() {
   const { user } = useAuth()
   const { dashboardData, loading, error } = useMetrics()
+  const [isPro, setIsPro] = useState(false)
+
+  useEffect(() => {
+    userService.getPlanStatus().then(s => setIsPro(s.is_active)).catch(() => {})
+  }, [])
 
   // Derived data
   const last30: DailyMetric[] = dashboardData?.last_30_days ?? []
@@ -85,20 +92,43 @@ export default function Dashboard() {
     {
       id: 'foundational',
       name: 'Fundacional',
-      progress: calcModuleProgress(conceptSummary, 1, 8, 8),
+      progress: calcModuleProgressWeighted(conceptSummary, 1, 8),
       concepts: 8,
       locked: false,
+      isPro: false,
     },
     {
       id: 'consolidation',
       name: 'Consolidação',
-      progress: calcModuleProgress(conceptSummary, 9, 15, 7),
+      progress: calcModuleProgressWeighted(conceptSummary, 9, 15),
       concepts: 7,
       locked: false,
+      isPro: false,
     },
-    { id: 'automation', name: 'Automação', progress: 0, concepts: 3, locked: true },
-    { id: 'rhythm',     name: 'Ritmo',     progress: 0, concepts: 3, locked: true },
-    { id: 'precision',  name: 'Precisão',  progress: 0, concepts: 3, locked: true },
+    {
+      id: 'automacao',
+      name: 'Automação',
+      progress: calcModuleProgressWeighted(conceptSummary, 16, 18),
+      concepts: 3,
+      locked: !isPro,
+      isPro: true,
+    },
+    {
+      id: 'ritmo',
+      name: 'Ritmo',
+      progress: calcModuleProgressWeighted(conceptSummary, 19, 21),
+      concepts: 3,
+      locked: !isPro,
+      isPro: true,
+    },
+    {
+      id: 'precisao',
+      name: 'Precisão',
+      progress: calcModuleProgressWeighted(conceptSummary, 22, 24),
+      concepts: 3,
+      locked: !isPro,
+      isPro: true,
+    },
   ]
 
   // Display name
@@ -208,50 +238,64 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-4">
                 {modules.map((module) => (
-                  <Link
+                  <div
                     key={module.id}
-                    to={module.locked ? '#' : `/modules/${module.id}`}
-                    className={module.locked ? 'pointer-events-none' : ''}
+                    className={module.isPro ? 'rounded-[var(--radius-technical)] ring-1 ring-[#3A72F8]/40' : ''}
                   >
-                    <BlueprintCard
-                      label={module.id.toUpperCase()}
-                      annotation={`${module.concepts}_CONCEPTS`}
-                      onClick={module.locked ? undefined : () => {}}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-semibold text-[var(--nm-text-high)]">
-                              {module.name}
-                            </h3>
-                            {module.locked && (
-                              <Lock size={16} className="text-[var(--nm-text-annotation)]" />
+                    <Link to={`/modules/${module.id}`}>
+                      <BlueprintCard
+                        label={module.id.toUpperCase()}
+                        annotation={module.isPro ? 'PRO' : `${module.concepts}_CONCEPTS`}
+                        onClick={() => {}}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h3 className="text-lg font-semibold text-[var(--nm-text-high)]">
+                                {module.name}
+                              </h3>
+                              {module.locked && (
+                                <Lock
+                                  size={16}
+                                  style={module.isPro
+                                    ? { color: '#3A72F8' }
+                                    : { color: 'var(--nm-text-annotation)' }}
+                                />
+                              )}
+                            </div>
+
+                            {module.locked ? (
+                              <div
+                                className="text-xs"
+                                style={module.isPro
+                                  ? { color: '#3A72F8', opacity: 0.7 }
+                                  : { color: 'var(--nm-text-annotation)' }}
+                              >
+                                Requer Protocolo Pro
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-4">
+                                <div className="flex-1 h-1 bg-[var(--nm-bg-main)] rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full transition-all duration-500"
+                                    style={{
+                                      width: `${module.progress}%`,
+                                      background: module.isPro
+                                        ? '#3A72F8'
+                                        : 'var(--nm-accent-primary)',
+                                    }}
+                                  />
+                                </div>
+                                <div className="text-xs font-[family-name:var(--font-data)] text-[var(--nm-text-dimmed)] tabular-nums">
+                                  {module.progress}%
+                                </div>
+                              </div>
                             )}
                           </div>
-
-                          {!module.locked && (
-                            <div className="flex items-center gap-4">
-                              <div className="flex-1 h-1 bg-[var(--nm-bg-main)] rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-[var(--nm-accent-primary)] transition-all duration-500"
-                                  style={{ width: `${module.progress}%` }}
-                                />
-                              </div>
-                              <div className="text-xs font-[family-name:var(--font-data)] text-[var(--nm-text-dimmed)] tabular-nums">
-                                {module.progress}%
-                              </div>
-                            </div>
-                          )}
-
-                          {module.locked && (
-                            <div className="text-xs text-[var(--nm-text-annotation)]">
-                              Requer Protocolo Pro
-                            </div>
-                          )}
                         </div>
-                      </div>
-                    </BlueprintCard>
-                  </Link>
+                      </BlueprintCard>
+                    </Link>
+                  </div>
                 ))}
               </div>
             )}

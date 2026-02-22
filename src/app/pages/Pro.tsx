@@ -97,6 +97,7 @@ export default function Pro() {
   }
 
   const isPro = planStatus?.is_active ?? false
+  const isAdmin = planStatus?.is_admin ?? false
 
   return (
     <div className="min-h-screen">
@@ -130,13 +131,23 @@ export default function Pro() {
           {(statusLoading || planStatus) && (
             <div className="mb-6">
               <BlueprintCard label="PLANO_ATUAL">
-                <p className="text-[var(--nm-text-dimmed)]">
-                  {statusLoading
-                    ? 'Verificando status do plano...'
-                    : isPro
-                    ? 'Voce esta com plano Pro ativo.'
-                    : 'Voce esta no plano Free.'}
-                </p>
+                {statusLoading ? (
+                  <p className="text-[var(--nm-text-dimmed)]">Verificando status do plano...</p>
+                ) : isAdmin ? (
+                  <div className="space-y-1">
+                    <p className="text-[var(--nm-accent-primary)] font-[family-name:var(--font-data)] text-xs tracking-widest uppercase">
+                      ADMIN_OVERRIDE · Acesso total ativo
+                    </p>
+                    <p className="text-[var(--nm-text-dimmed)] text-sm">
+                      Todas as features Pro estão liberadas via override de desenvolvimento.
+                      Stripe não é necessário neste modo.
+                    </p>
+                  </div>
+                ) : isPro ? (
+                  <p className="text-[var(--nm-text-dimmed)]">Voce esta com plano Pro ativo.</p>
+                ) : (
+                  <p className="text-[var(--nm-text-dimmed)]">Voce esta no plano Free.</p>
+                )}
               </BlueprintCard>
             </div>
           )}
@@ -222,7 +233,11 @@ export default function Pro() {
           </section>
 
           <div className="text-center mt-12 pt-12 border-t border-[var(--nm-grid-line)]">
-            {isPro ? (
+            {isAdmin ? (
+              <p className="text-[var(--nm-text-annotation)] font-[family-name:var(--font-data)] text-xs tracking-widest uppercase">
+                MODO_DESENVOLVIMENTO · Admin override ativo
+              </p>
+            ) : isPro ? (
               <>
                 <p className="text-[var(--nm-text-dimmed)] mb-6">Seu plano Pro esta ativo.</p>
                 <ActionButton variant="ghost" onClick={handleCancel} disabled={loading}>

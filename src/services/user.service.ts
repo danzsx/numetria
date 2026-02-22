@@ -5,6 +5,9 @@ export interface PlanStatus {
   plan_type: 'free' | 'pro'
   plan_expires_at: string | null
   is_active: boolean
+  /** 'admin' tem acesso Pro completo sem depender do Stripe */
+  role: 'user' | 'admin'
+  is_admin: boolean
 }
 
 export const userService = {
@@ -26,19 +29,27 @@ export const userService = {
         plan_type: result.plan_type ?? 'free',
         plan_expires_at: result.plan_expires_at ?? null,
         is_active: Boolean(result.is_active),
+        role: result.role ?? 'user',
+        is_admin: Boolean(result.is_admin),
       }
     }
 
+    // Fallback: lê perfil diretamente se o RPC falhar
     const profile = await this.getProfile()
     const fallbackPlanType = profile?.plan_type ?? 'free'
+    const fallbackRole = profile?.role ?? 'user'
     const fallbackExpiresAt = profile?.plan_expires_at ?? null
+    const fallbackIsAdmin = fallbackRole === 'admin'
     const fallbackIsActive =
-      fallbackPlanType === 'pro' && (!fallbackExpiresAt || new Date(fallbackExpiresAt).getTime() > Date.now())
+      fallbackIsAdmin ||
+      (fallbackPlanType === 'pro' && (!fallbackExpiresAt || new Date(fallbackExpiresAt).getTime() > Date.now()))
 
     return {
       plan_type: fallbackPlanType,
       plan_expires_at: fallbackExpiresAt,
       is_active: fallbackIsActive,
+      role: fallbackRole,
+      is_admin: fallbackIsAdmin,
     }
   },
 

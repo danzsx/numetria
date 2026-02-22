@@ -8,6 +8,7 @@ export function useConceptProgress() {
   const [progress, setProgress] = useState<ConceptProgress[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isPro, setIsPro] = useState(false)
 
   const fetchProgress = useCallback(async () => {
     if (!user) {
@@ -17,8 +18,12 @@ export function useConceptProgress() {
     setLoading(true)
     setError(null)
     try {
-      const data = await userService.getConceptProgress()
+      const [data, planStatus] = await Promise.all([
+        userService.getConceptProgress(),
+        userService.getPlanStatus(),
+      ])
       setProgress(data)
+      setIsPro(planStatus.is_active)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar progresso')
     } finally {
@@ -51,5 +56,7 @@ export function useConceptProgress() {
     [progress]
   )
 
-  return { progress, loading, error, refetch: fetchProgress, getConceptById, getModuleProgress }
+  const isProConcept = (conceptId: number) => conceptId >= 16
+
+  return { progress, loading, error, refetch: fetchProgress, getConceptById, getModuleProgress, isPro, isProConcept }
 }

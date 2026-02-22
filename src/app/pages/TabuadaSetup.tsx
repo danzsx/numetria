@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
 import { MobileNav } from '../components/MobileNav';
@@ -13,10 +13,11 @@ import {
   getOperationSymbol,
   getLevelDescription,
   getLevel,
-  TabuadaConfig
+  TabuadaConfig,
+  CONCEPT_CONFIG_MAP,
 } from '../utils/tabuadaEngine';
 import { useAdaptive } from '../../hooks/useAdaptive';
-import { Loader2, TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, Minus, Zap, BookOpen } from 'lucide-react';
 
 // Mapeia nível 1-4 para rótulo exibido no botão
 const LEVEL_LABELS: Record<number, string> = {
@@ -26,20 +27,43 @@ const LEVEL_LABELS: Record<number, string> = {
   4: 'Aleatório · Com cronômetro',
 };
 
+const LESSON_NAMES: Record<number, string> = { 1: 'Estrutura', 2: 'Compressão', 3: 'Ritmo' };
+
 export default function TabuadaSetup() {
   const navigate = useNavigate();
 
-  const [operation, setOperation] = useState<Operation>('multiplication');
-  const [base, setBase] = useState<number>(7);
+  // Parâmetros de URL (modo guiado vindo de link direto com conceptId)
+  const [searchParams] = useSearchParams();
+  const conceptId = searchParams.get('conceptId') ? Number(searchParams.get('conceptId')) : null;
+  const lessonNumber = searchParams.get('lessonNumber') ? Number(searchParams.get('lessonNumber')) : null;
+  const isGuidedMode = !!conceptId;
+
+  const conceptDef = conceptId ? CONCEPT_CONFIG_MAP[conceptId] : null;
+
+  const [operation, setOperation] = useState<Operation>(conceptDef?.operation ?? 'multiplication');
+  const [base, setBase] = useState<number>(conceptDef?.base ?? 7);
   const [mode, setMode] = useState<Mode>('sequential');
   const [timerMode, setTimerMode] = useState<TimerMode>('untimed');
 
-  // Recomendação adaptativa baseada no histórico global do usuário
-  const { recommendation, loading: loadingRec } = useAdaptive(null);
+  // Recomendação adaptativa: por conceito no modo guiado, global no modo livre
+  const { recommendation, loading: loadingRec } = useAdaptive(isGuidedMode ? conceptId : null);
 
   const handleStart = () => {
-    const config: TabuadaConfig = { operation, base, mode, timerMode };
-    navigate('/tabuada/training', { state: { config } });
+    if (isGuidedMode && conceptDef) {
+      // Modo guiado: config derivada do conceito + recomendação adaptativa
+      const cfg: TabuadaConfig = {
+        operation: conceptDef.operation,
+        base: conceptDef.base,
+        mode: (recommendation?.mode ?? 'sequential') as Mode,
+        timerMode: (recommendation?.timer_mode ?? 'untimed') as TimerMode,
+      };
+      const params = new URLSearchParams({ conceptId: String(conceptId) });
+      if (lessonNumber) params.set('lessonNumber', String(lessonNumber));
+      navigate(`/tabuada/training?${params.toString()}`, { state: { config: cfg } });
+    } else {
+      const config: TabuadaConfig = { operation, base, mode, timerMode };
+      navigate('/tabuada/training', { state: { config } });
+    }
   };
 
   const applyRecommendation = () => {
@@ -68,6 +92,11 @@ export default function TabuadaSetup() {
     recommendation.mode === mode &&
     recommendation.timer_mode === timerMode;
 
+  // Nível efetivo no modo guiado (derivado da recomendação)
+  const guidedLevel = recommendation
+    ? recommendation.level
+    : 1;
+
   return (
     <div className="min-h-screen">
       <Header isLoggedIn={true} />
@@ -75,136 +104,182 @@ export default function TabuadaSetup() {
       <main className="pt-24 pb-16 px-6 mb-16 md:mb-0">
         <div className="max-w-3xl mx-auto">
           <div className="mb-8">
-            <Link to="/modules" className="text-sm text-[var(--nm-text-dimmed)] hover:text-[var(--nm-text-high)] transition-colors">
+            <Link
+              to={isGuidedMode ? '/modules' : '/modules'}
+              className="text-sm text-[var(--nm-text-dimmed)] hover:text-[var(--nm-text-high)] transition-colors"
+            >
               ← Voltar aos módulos
             </Link>
           </div>
 
           <div className="mb-12">
             <div className="text-[var(--nm-text-annotation)] font-[family-name:var(--font-data)] text-[10px] uppercase tracking-[0.15em] mb-2">
-              TABUADA_ESTRUTURADA
+              {isGuidedMode ? 'MODO_GUIADO' : 'TABUADA_ESTRUTURADA'}
             </div>
             <h1 className="text-3xl font-semibold text-[var(--nm-text-high)] mb-2">
-              Configuração de Treino
+              {isGuidedMode ? 'Treino por Conceito' : 'Configuração de Treino'}
             </h1>
             <p className="text-[var(--nm-text-dimmed)]">
-              Módulo de automação e estabilidade básica
+              {isGuidedMode
+                ? 'Configuração otimizada para o conceito selecionado'
+                : 'Módulo de automação e estabilidade básica'}
             </p>
           </div>
 
           <div className="space-y-6">
-            {/* Operação */}
-            <BlueprintCard label="OPERAÇÃO">
-              <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-4">
-                Tipo de operação
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                {(['multiplication', 'division', 'addition', 'subtraction'] as Operation[]).map((op) => (
-                  <button
-                    key={op}
-                    onClick={() => setOperation(op)}
-                    className={`p-4 rounded-[var(--radius-technical)] border transition-colors ${
-                      operation === op
-                        ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
-                        : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
-                    }`}
-                  >
-                    <div className="text-2xl font-[family-name:var(--font-data)] text-center mb-2">
-                      {getOperationSymbol(op)}
+            {/* ─── MODO GUIADO: card de conceito selecionado ─── */}
+            {isGuidedMode && conceptDef && (
+              <BlueprintCard
+                label="CONCEITO_SELECIONADO"
+                annotation={`AULA_${lessonNumber ?? 1}`}
+              >
+                <div className="flex items-start gap-4">
+                  <div className="p-2 rounded-[var(--radius-technical)] border border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]">
+                    <BookOpen size={18} className="text-[var(--nm-accent-primary)]" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-1">
+                      {conceptDef.name}
+                    </h3>
+                    <div className="flex items-center gap-3 text-xs text-[var(--nm-text-annotation)]">
+                      <span className="font-[family-name:var(--font-data)] uppercase tracking-[0.08em]">
+                        {getOperationName(conceptDef.operation)} · base {conceptDef.base}
+                      </span>
+                      <span>·</span>
+                      <span className="font-[family-name:var(--font-data)] uppercase tracking-[0.08em]">
+                        {LESSON_NAMES[lessonNumber ?? 1]}
+                      </span>
                     </div>
-                    <div className="text-sm text-[var(--nm-text-dimmed)] text-center">
-                      {getOperationName(op)}
+                    <div className="mt-3 flex items-center gap-2 text-xs text-[var(--nm-text-dimmed)]">
+                      <span className="font-[family-name:var(--font-data)] text-[10px] uppercase tracking-[0.08em]">
+                        Operação:
+                      </span>
+                      <span className="text-xl font-[family-name:var(--font-data)] text-[var(--nm-text-high)]">
+                        {getOperationSymbol(conceptDef.operation)}
+                      </span>
                     </div>
-                  </button>
-                ))}
-              </div>
-            </BlueprintCard>
+                  </div>
+                </div>
+              </BlueprintCard>
+            )}
 
-            {/* Base numérica */}
-            <BlueprintCard label="BASE">
-              <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-4">
-                Número base
-              </h3>
-              <div className="grid grid-cols-5 gap-3">
-                {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((num) => (
-                  <button
-                    key={num}
-                    onClick={() => setBase(num)}
-                    className={`aspect-square p-4 rounded-[var(--radius-technical)] border transition-colors ${
-                      base === num
-                        ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
-                        : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
-                    }`}
-                  >
-                    <div className="text-xl font-[family-name:var(--font-data)] text-[var(--nm-text-high)]">
-                      {num}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </BlueprintCard>
+            {/* ─── MODO LIVRE: seletores manuais ─── */}
+            {!isGuidedMode && (
+              <>
+                {/* Operação */}
+                <BlueprintCard label="OPERAÇÃO">
+                  <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-4">
+                    Tipo de operação
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['multiplication', 'division', 'addition', 'subtraction'] as Operation[]).map((op) => (
+                      <button
+                        key={op}
+                        onClick={() => setOperation(op)}
+                        className={`p-4 rounded-[var(--radius-technical)] border transition-colors ${
+                          operation === op
+                            ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
+                            : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
+                        }`}
+                      >
+                        <div className="text-2xl font-[family-name:var(--font-data)] text-center mb-2">
+                          {getOperationSymbol(op)}
+                        </div>
+                        <div className="text-sm text-[var(--nm-text-dimmed)] text-center">
+                          {getOperationName(op)}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </BlueprintCard>
 
-            {/* Modo de execução */}
-            <BlueprintCard label="MODO">
-              <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-4">
-                Sequência de apresentação
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setMode('sequential')}
-                  className={`p-4 rounded-[var(--radius-technical)] border transition-colors ${
-                    mode === 'sequential'
-                      ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
-                      : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
-                  }`}
-                >
-                  <div className="text-sm font-semibold text-[var(--nm-text-high)] mb-1">Sequencial</div>
-                  <div className="text-xs text-[var(--nm-text-dimmed)]">Ordem previsível</div>
-                </button>
-                <button
-                  onClick={() => setMode('random')}
-                  className={`p-4 rounded-[var(--radius-technical)] border transition-colors ${
-                    mode === 'random'
-                      ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
-                      : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
-                  }`}
-                >
-                  <div className="text-sm font-semibold text-[var(--nm-text-high)] mb-1">Aleatório</div>
-                  <div className="text-xs text-[var(--nm-text-dimmed)]">Ordem embaralhada</div>
-                </button>
-              </div>
-            </BlueprintCard>
+                {/* Base numérica */}
+                <BlueprintCard label="BASE">
+                  <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-4">
+                    Número base
+                  </h3>
+                  <div className="grid grid-cols-5 gap-3">
+                    {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((num) => (
+                      <button
+                        key={num}
+                        onClick={() => setBase(num)}
+                        className={`aspect-square p-4 rounded-[var(--radius-technical)] border transition-colors ${
+                          base === num
+                            ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
+                            : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
+                        }`}
+                      >
+                        <div className="text-xl font-[family-name:var(--font-data)] text-[var(--nm-text-high)]">
+                          {num}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </BlueprintCard>
 
-            {/* Controle de tempo */}
-            <BlueprintCard label="RITMO">
-              <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-4">
-                Controle temporal
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setTimerMode('untimed')}
-                  className={`p-4 rounded-[var(--radius-technical)] border transition-colors ${
-                    timerMode === 'untimed'
-                      ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
-                      : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
-                  }`}
-                >
-                  <div className="text-sm font-semibold text-[var(--nm-text-high)] mb-1">Sem cronômetro</div>
-                  <div className="text-xs text-[var(--nm-text-dimmed)]">Foco em precisão</div>
-                </button>
-                <button
-                  onClick={() => setTimerMode('timed')}
-                  className={`p-4 rounded-[var(--radius-technical)] border transition-colors ${
-                    timerMode === 'timed'
-                      ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
-                      : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
-                  }`}
-                >
-                  <div className="text-sm font-semibold text-[var(--nm-text-high)] mb-1">Com cronômetro</div>
-                  <div className="text-xs text-[var(--nm-text-dimmed)]">Controle de ritmo</div>
-                </button>
-              </div>
-            </BlueprintCard>
+                {/* Modo de execução */}
+                <BlueprintCard label="MODO">
+                  <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-4">
+                    Sequência de apresentação
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setMode('sequential')}
+                      className={`p-4 rounded-[var(--radius-technical)] border transition-colors ${
+                        mode === 'sequential'
+                          ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
+                          : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
+                      }`}
+                    >
+                      <div className="text-sm font-semibold text-[var(--nm-text-high)] mb-1">Sequencial</div>
+                      <div className="text-xs text-[var(--nm-text-dimmed)]">Ordem previsível</div>
+                    </button>
+                    <button
+                      onClick={() => setMode('random')}
+                      className={`p-4 rounded-[var(--radius-technical)] border transition-colors ${
+                        mode === 'random'
+                          ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
+                          : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
+                      }`}
+                    >
+                      <div className="text-sm font-semibold text-[var(--nm-text-high)] mb-1">Aleatório</div>
+                      <div className="text-xs text-[var(--nm-text-dimmed)]">Ordem embaralhada</div>
+                    </button>
+                  </div>
+                </BlueprintCard>
+
+                {/* Controle de tempo */}
+                <BlueprintCard label="RITMO">
+                  <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-4">
+                    Controle temporal
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setTimerMode('untimed')}
+                      className={`p-4 rounded-[var(--radius-technical)] border transition-colors ${
+                        timerMode === 'untimed'
+                          ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
+                          : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
+                      }`}
+                    >
+                      <div className="text-sm font-semibold text-[var(--nm-text-high)] mb-1">Sem cronômetro</div>
+                      <div className="text-xs text-[var(--nm-text-dimmed)]">Foco em precisão</div>
+                    </button>
+                    <button
+                      onClick={() => setTimerMode('timed')}
+                      className={`p-4 rounded-[var(--radius-technical)] border transition-colors ${
+                        timerMode === 'timed'
+                          ? 'border-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)]'
+                          : 'border-[var(--nm-grid-line)] bg-transparent hover:border-[var(--nm-text-annotation)]'
+                      }`}
+                    >
+                      <div className="text-sm font-semibold text-[var(--nm-text-high)] mb-1">Com cronômetro</div>
+                      <div className="text-xs text-[var(--nm-text-dimmed)]">Controle de ritmo</div>
+                    </button>
+                  </div>
+                </BlueprintCard>
+              </>
+            )}
 
             {/* ─── Recomendação Adaptativa ─── */}
             {loadingRec ? (
@@ -244,10 +319,12 @@ export default function TabuadaSetup() {
                   <Zap size={14} className="text-[var(--nm-accent-primary)] shrink-0" />
                   <div>
                     <div className="text-sm font-semibold text-[var(--nm-text-high)]">
-                      Nível {recommendation.level} — {LEVEL_LABELS[recommendation.level]}
+                      {isGuidedMode
+                        ? `Nível ${guidedLevel} — ${LEVEL_LABELS[guidedLevel]}`
+                        : `Nível ${recommendation.level} — ${LEVEL_LABELS[recommendation.level]}`}
                     </div>
                     <div className="text-xs text-[var(--nm-text-dimmed)] mt-0.5">
-                      {getLevelDescription(recommendation.level as 1 | 2 | 3 | 4).split('—')[0].trim()}
+                      {getLevelDescription((isGuidedMode ? guidedLevel : recommendation.level) as 1 | 2 | 3 | 4).split('—')[0].trim()}
                     </div>
                   </div>
                 </div>
@@ -281,29 +358,33 @@ export default function TabuadaSetup() {
                   </div>
                 )}
 
-                {/* Botão aplicar (desativado se já está na configuração recomendada) */}
-                <button
-                  onClick={applyRecommendation}
-                  disabled={!!isRecommendationActive}
-                  className={`w-full py-2 px-4 rounded-[var(--radius-technical)] border text-sm transition-colors ${
-                    isRecommendationActive
-                      ? 'border-[var(--nm-accent-primary)] text-[var(--nm-accent-primary)] opacity-60 cursor-default'
-                      : 'border-[var(--nm-accent-primary)] text-[var(--nm-accent-primary)] hover:bg-[var(--nm-accent-primary)] hover:text-[var(--nm-bg-main)]'
-                  }`}
-                >
-                  {isRecommendationActive ? '✓ Configuração recomendada aplicada' : 'Aplicar recomendação'}
-                </button>
+                {/* Botão aplicar — apenas no modo livre */}
+                {!isGuidedMode && (
+                  <button
+                    onClick={applyRecommendation}
+                    disabled={!!isRecommendationActive}
+                    className={`w-full py-2 px-4 rounded-[var(--radius-technical)] border text-sm transition-colors ${
+                      isRecommendationActive
+                        ? 'border-[var(--nm-accent-primary)] text-[var(--nm-accent-primary)] opacity-60 cursor-default'
+                        : 'border-[var(--nm-accent-primary)] text-[var(--nm-accent-primary)] hover:bg-[var(--nm-accent-primary)] hover:text-[var(--nm-bg-main)]'
+                    }`}
+                  >
+                    {isRecommendationActive ? '✓ Configuração recomendada aplicada' : 'Aplicar recomendação'}
+                  </button>
+                )}
               </BlueprintCard>
             ) : null}
 
             {/* Nível e início */}
-            <BlueprintCard label={`NÍVEL_0${level}`}>
+            <BlueprintCard label={isGuidedMode ? `NÍVEL_0${guidedLevel}` : `NÍVEL_0${level}`}>
               <div className="mb-6">
                 <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-2">
                   Configuração atual
                 </h3>
                 <p className="text-sm text-[var(--nm-text-dimmed)]">
-                  {levelDescription}
+                  {isGuidedMode
+                    ? getLevelDescription(guidedLevel as 1 | 2 | 3 | 4)
+                    : levelDescription}
                 </p>
               </div>
 
@@ -313,7 +394,7 @@ export default function TabuadaSetup() {
                   onClick={handleStart}
                   className="flex-1"
                 >
-                  Iniciar treino
+                  {isGuidedMode ? 'Iniciar aula' : 'Iniciar treino'}
                 </ActionButton>
               </div>
             </BlueprintCard>

@@ -24,6 +24,7 @@ export interface Database {
           global_avg_time: number | null
           global_variability: number | null
           adaptive_level: number | null
+          role: 'user' | 'admin'
         }
         Insert: {
           id: string
@@ -39,6 +40,7 @@ export interface Database {
           global_avg_time?: number | null
           global_variability?: number | null
           adaptive_level?: number | null
+          role?: 'user' | 'admin'
         }
         Update: {
           id?: string
@@ -53,6 +55,7 @@ export interface Database {
           global_avg_time?: number | null
           global_variability?: number | null
           adaptive_level?: number | null
+          // role não é atualizável via frontend; apenas via SQL pelo dono do projeto
         }
       }
       streaks: {
@@ -348,4 +351,14 @@ export interface AdaptiveRecommendation {
   unstable_count: number
   last_status: 'stable' | 'consolidating' | 'unstable'
   previous_concept_id: number | null
+  pro_mode: 'flow' | 'rhythm' | 'precision' | null
+}
+
+export interface CompleteSessionResult {
+  session_id: string
+  session_status: 'stable' | 'consolidating' | 'unstable'
+  recommendation: string | null
+  streak: number
+  adaptive_level: number
+  new_status: 'locked' | 'available' | 'in_progress' | 'completed' | 'mastered' | null
 }

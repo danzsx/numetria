@@ -11,6 +11,7 @@ import {
   Mode,
   TimerMode,
   Operation,
+  ProMode,
 } from '../utils/tabuadaEngine';
 import { SessionResult } from '../../services/session.service';
 import { TrendingUp, TrendingDown, Minus, ChevronUp, RotateCcw, Equal } from 'lucide-react';
@@ -24,6 +25,9 @@ interface ResultState {
   };
   config: TabuadaConfig;
   result?: SessionResult | null;
+  conceptId?: number | null;
+  lessonNumber?: number | null;
+  proMode?: ProMode | null;
 }
 
 // ─── Utilitários adaptativos ─────────────────────────────────
@@ -101,9 +105,25 @@ export default function TabuadaResult() {
     }
   }, [data, navigate]);
 
+  useEffect(() => {
+    if (data?.result?.new_status === 'mastered' && data?.conceptId) {
+      console.log('[analytics] concept_mastered', { conceptId: data.conceptId, lessonNumber: data.lessonNumber });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!data) return null;
 
-  const { metrics, analysis, config, result } = data;
+  const { metrics, analysis, config, result, conceptId } = data;
+
+  const isPro = conceptId != null && conceptId >= 16;
+
+  // Índice de Estabilidade PRO
+  const stabilityScore = isPro && metrics.avgTime > 0
+    ? Math.max(0, (metrics.correctAnswers / metrics.totalProblems) * (1 - metrics.timeVariability / metrics.avgTime) * 100)
+    : 0;
+
+  const isCompressionMode = isPro && analysis.status === 'stable' && metrics.precision >= 95 && stabilityScore > 85;
+
   const level    = getLevel(config);
   const levelDesc = getLevelDescription(level);
   const nextStep  = getNextStep(config, analysis.status, result ?? null);
@@ -185,10 +205,10 @@ export default function TabuadaResult() {
             <div className="grid grid-cols-2 gap-4">
               <BlueprintCard>
                 <div className="text-[var(--nm-text-annotation)] font-[family-name:var(--font-data)] text-[10px] uppercase tracking-[0.15em] mb-2">
-                  PRECISÃO
+                  {isPro ? 'ÍNDICE_DE_ESTABILIDADE' : 'PRECISÃO'}
                 </div>
                 <div className="text-4xl font-[family-name:var(--font-data)] font-semibold text-[var(--nm-text-high)] tabular-nums">
-                  {metrics.precision.toFixed(1)}%
+                  {isPro ? `${stabilityScore.toFixed(1)}%` : `${metrics.precision.toFixed(1)}%`}
                 </div>
                 <div className="text-xs text-[var(--nm-text-dimmed)] mt-1">
                   {metrics.correctAnswers}/{metrics.totalProblems} corretas
@@ -207,6 +227,15 @@ export default function TabuadaResult() {
                 </div>
               </BlueprintCard>
             </div>
+
+            {/* MODO_COMPRESSÃO badge — sessões PRO com alta estabilidade e precisão */}
+            {isCompressionMode && (
+              <BlueprintCard>
+                <div className="text-[var(--nm-accent-primary)] font-[family-name:var(--font-data)] text-xs tracking-widest uppercase">
+                  MODO_COMPRESSÃO · Etapas visuais reduzidas na próxima sessão
+                </div>
+              </BlueprintCard>
+            )}
 
             {/* Métricas secundárias */}
             <BlueprintCard label="ANÁLISE_TÉCNICA">

@@ -20,14 +20,10 @@ export default function ProLayout() {
       }
 
       try {
-        const profile = await userService.getProfile()
-        const planType = profile?.plan_type ?? 'free'
-        const expiresAt = profile?.plan_expires_at ? new Date(profile.plan_expires_at) : null
-        const hasValidExpiry = !expiresAt || expiresAt.getTime() > Date.now()
-        const canAccess = planType === 'pro' && hasValidExpiry
-
+        // getPlanStatus retorna is_active = true para admins e para usuários Pro válidos
+        const status = await userService.getPlanStatus()
         if (mounted) {
-          setIsPro(canAccess)
+          setIsPro(status.is_active)
         }
       } catch {
         if (mounted) {
