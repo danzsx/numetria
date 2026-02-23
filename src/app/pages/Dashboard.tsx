@@ -1,15 +1,20 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { Header } from '../components/Header'
 import { Footer } from '../components/Footer'
 import { MobileNav } from '../components/MobileNav'
 import { BlueprintCard } from '../components/BlueprintCard'
+import { ActionButton } from '../components/ActionButton'
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts'
 import { Lock } from 'lucide-react'
 import { useMetrics } from '../../hooks/useMetrics'
 import { useAuth } from '../../contexts/AuthContext'
 import { userService } from '../../services/user.service'
 import type { ConceptProgress, DailyMetric } from '../../types/database'
+import { findNextTrailAction } from '../utils/moduleContext'
+import type { ModuleId } from '../utils/moduleContext'
+import { trackFlowEvent } from '../utils/flowTelemetry'
+import { isModuleEnabled } from '../utils/moduleFlags'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -27,8 +32,8 @@ function calcModuleProgressWeighted(
   const inRange = summary.filter(c => c.concept_id >= fromId && c.concept_id <= toId)
   if (inRange.length === 0) return 0
   const totalWeight = inRange.reduce((acc, c) => {
-    if (c.status === 'mastered')    return acc + 100
-    if (c.status === 'completed')   return acc + 75
+    if (c.status === 'mastered') return acc + 100
+    if (c.status === 'completed') return acc + 75
     if (c.status === 'in_progress') return acc + 30
     return acc
   }, 0)
@@ -56,12 +61,13 @@ function Skeleton({ className }: { className?: string }) {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const { dashboardData, loading, error } = useMetrics()
   const [isPro, setIsPro] = useState(false)
 
   useEffect(() => {
-    userService.getPlanStatus().then(s => setIsPro(s.is_active)).catch(() => {})
+    userService.getPlanStatus().then(s => setIsPro(s.is_active)).catch(() => { })
   }, [])
 
   // Derived data
@@ -70,6 +76,34 @@ export default function Dashboard() {
   const prev7 = last30.slice(-14, -7)
   const conceptSummary = dashboardData?.concept_summary ?? []
   const streak = dashboardData?.streak?.current_streak_days ?? 0
+  const nextTrailAction = findNextTrailAction(conceptSummary, isPro)
+
+  const handleContinueTrail = () => {
+    if (!nextTrailAction) return
+
+    trackFlowEvent('dashboard_continue_trail_click', {
+      moduleId: nextTrailAction.moduleId,
+      moduleName: nextTrailAction.moduleName,
+      conceptId: nextTrailAction.conceptId,
+      conceptName: nextTrailAction.conceptName,
+      lessonNumber: nextTrailAction.lessonNumber,
+    })
+
+    navigate(
+      `/tabuada/training?conceptId=${nextTrailAction.conceptId}&lessonNumber=${nextTrailAction.lessonNumber}`,
+      {
+        state: {
+          moduleJourney: {
+            moduleId: nextTrailAction.moduleId,
+            moduleName: nextTrailAction.moduleName,
+            conceptId: nextTrailAction.conceptId,
+            conceptName: nextTrailAction.conceptName,
+            lessonNumber: nextTrailAction.lessonNumber,
+          },
+        },
+      }
+    )
+  }
 
   const avgPrecision = avg(last7.map((d) => d.precision_pct))
   const avgTime = avg(last7.map((d) => d.avg_time_ms))
@@ -129,7 +163,7 @@ export default function Dashboard() {
       locked: !isPro,
       isPro: true,
     },
-  ]
+  ].filter((module) => isModuleEnabled(module.id as ModuleId))
 
   // Display name
   const displayName =
@@ -167,6 +201,81 @@ export default function Dashboard() {
               {error}
             </div>
           )}
+
+          {/* Continue Trail */}
+          <section className="mb-12">
+            <div className="text-[var(--nm-text-annotation)] font-[family-name:var(--font-data)] text-[10px] uppercase tracking-[0.15em] mb-4">
+              CONTINUAR_TRILHA
+            </div>
+            <BlueprintCard label="PROXIMA_ACAO">
+              {loading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-5 w-2/3" />
+                  <Skeleton className="h-5 w-1/2" />
+                  <Skeleton className="h-5 w-1/3" />
+                </div>
+              ) : !nextTrailAction ? (
+                <p className="text-sm text-[var(--nm-text-dimmed)]">
+                  Nenhum modulo esta ativo nesta onda de rollout.
+                </p>
+              ) : (
+                <>
+                  <div className="text-sm text-[var(--nm-text-dimmed)] mb-2">
+                    Modulo atual
+                  </div>
+                  <div className="text-lg font-semibold text-[var(--nm-text-high)] mb-3">
+                    {nextTrailAction.moduleName}
+                  </div>
+                  <div className="text-sm text-[var(--nm-text-dimmed)] mb-1">
+                    Conceito atual
+                  </div>
+                  <div className="text-[var(--nm-text-high)] mb-3">
+                    {nextTrailAction.conceptName}
+                  </div>
+                  <div className="text-sm text-[var(--nm-text-dimmed)] mb-1">
+                    Proxima aula recomendada
+                  </div>
+                  <div className="text-[var(--nm-text-high)] mb-4">
+                    Aula {nextTrailAction.lessonNumber} - {nextTrailAction.lessonLabel}
+                  </div>
+                  <ActionButton
+                    variant="primary"
+                    className="w-full"
+                    onClick={handleContinueTrail}
+                  >
+                    Continuar de onde parei
+                  </ActionButton>
+                </>
+              )}
+            </BlueprintCard>
+          </section>
+
+          {/* Classifier quick-access */}
+          <section className="mb-12">
+            <div className="text-[var(--nm-text-annotation)] font-[family-name:var(--font-data)] text-[10px] uppercase tracking-[0.15em] mb-4">
+              CLASSIFICADOR_OPERAÇÕES
+            </div>
+            <Link to="/classify">
+              <BlueprintCard label="ANALYZE" annotation="NOVO" onClick={() => { }}>
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-[var(--radius-technical)] bg-[var(--nm-accent-primary)]/10 flex items-center justify-center flex-shrink-0">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--nm-accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.3-4.3" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-[var(--nm-text-high)] mb-1">
+                      Classificador Estrutural
+                    </h3>
+                    <p className="text-sm text-[var(--nm-text-dimmed)]">
+                      Digite uma operação e descubra qual conceito e aula são mais relevantes.
+                    </p>
+                  </div>
+                </div>
+              </BlueprintCard>
+            </Link>
+          </section>
 
           {/* Metrics Block */}
           <section className="mb-12">
@@ -246,7 +355,7 @@ export default function Dashboard() {
                       <BlueprintCard
                         label={module.id.toUpperCase()}
                         annotation={module.isPro ? 'PRO' : `${module.concepts}_CONCEPTS`}
-                        onClick={() => {}}
+                        onClick={() => { }}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex-1">

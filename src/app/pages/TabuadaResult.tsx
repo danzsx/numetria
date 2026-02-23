@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { BlueprintCard } from '../components/BlueprintCard';
 import { ActionButton } from '../components/ActionButton';
@@ -15,6 +15,12 @@ import {
 } from '../utils/tabuadaEngine';
 import { SessionResult } from '../../services/session.service';
 import { TrendingUp, TrendingDown, Minus, ChevronUp, RotateCcw, Equal } from 'lucide-react';
+import {
+  buildJourneyContext,
+  getLessonLabel,
+} from '../utils/moduleContext';
+import type { ModuleJourneyContext } from '../utils/moduleContext';
+import { trackFlowEvent } from '../utils/flowTelemetry';
 
 interface ResultState {
   metrics: SessionMetrics;
@@ -28,6 +34,7 @@ interface ResultState {
   conceptId?: number | null;
   lessonNumber?: number | null;
   proMode?: ProMode | null;
+  moduleJourney?: ModuleJourneyContext;
 }
 
 // ─── Utilitários adaptativos ─────────────────────────────────
@@ -98,6 +105,7 @@ export default function TabuadaResult() {
   const navigate = useNavigate();
   const location = useLocation();
   const data = location.state as ResultState | null;
+  const hasTakenResultActionRef = useRef(false);
 
   useEffect(() => {
     if (!data) {
@@ -113,7 +121,40 @@ export default function TabuadaResult() {
 
   if (!data) return null;
 
-  const { metrics, analysis, config, result, conceptId } = data;
+  const { metrics, analysis, config, result, conceptId, lessonNumber } = data;
+  const sessionId = result?.session_id ?? null;
+  const moduleJourney =
+    data.moduleJourney ??
+    (conceptId && lessonNumber ? buildJourneyContext(conceptId, lessonNumber) : null);
+  const isModuleJourney = moduleJourney !== null;
+  const canAdvanceToNextLesson = isModuleJourney && analysis.status !== 'unstable' && moduleJourney.lessonNumber < 3;
+
+  useEffect(() => {
+    if (!moduleJourney) return;
+    trackFlowEvent('module_result_viewed', {
+      moduleId: moduleJourney.moduleId,
+      moduleName: moduleJourney.moduleName,
+      conceptId: moduleJourney.conceptId,
+      conceptName: moduleJourney.conceptName,
+      lessonNumber: moduleJourney.lessonNumber,
+      sessionId,
+      sessionStatus: analysis.status,
+    });
+  }, [analysis.status, moduleJourney, sessionId]);
+
+  useEffect(() => {
+    return () => {
+      if (!moduleJourney || hasTakenResultActionRef.current) return;
+      trackFlowEvent('module_result_no_action_exit', {
+        moduleId: moduleJourney.moduleId,
+        moduleName: moduleJourney.moduleName,
+        conceptId: moduleJourney.conceptId,
+        conceptName: moduleJourney.conceptName,
+        lessonNumber: moduleJourney.lessonNumber,
+        sessionId,
+      });
+    };
+  }, [moduleJourney, sessionId]);
 
   const isPro = conceptId != null && conceptId >= 16;
 
@@ -153,6 +194,22 @@ export default function TabuadaResult() {
   };
 
   const handleRetry = () => {
+    if (isModuleJourney && moduleJourney) {
+      trackFlowEvent('module_result_repeat_lesson_click', {
+        moduleId: moduleJourney.moduleId,
+        moduleName: moduleJourney.moduleName,
+        conceptId: moduleJourney.conceptId,
+        conceptName: moduleJourney.conceptName,
+        lessonNumber: moduleJourney.lessonNumber,
+        sessionId,
+      });
+      hasTakenResultActionRef.current = true;
+      navigate(
+        `/tabuada/training?conceptId=${moduleJourney.conceptId}&lessonNumber=${moduleJourney.lessonNumber}`,
+        { state: { moduleJourney } }
+      );
+      return;
+    }
     navigate('/tabuada/training', { state: { config } });
   };
 
@@ -161,7 +218,40 @@ export default function TabuadaResult() {
   };
 
   const handleNextStep = () => {
+    if (canAdvanceToNextLesson && moduleJourney) {
+      const nextLessonNumber = (moduleJourney.lessonNumber + 1) as 1 | 2 | 3;
+      const nextJourney: ModuleJourneyContext = { ...moduleJourney, lessonNumber: nextLessonNumber };
+      trackFlowEvent('module_result_next_lesson_click', {
+        moduleId: moduleJourney.moduleId,
+        moduleName: moduleJourney.moduleName,
+        conceptId: moduleJourney.conceptId,
+        conceptName: moduleJourney.conceptName,
+        currentLessonNumber: moduleJourney.lessonNumber,
+        nextLessonNumber,
+        sessionId,
+      });
+      hasTakenResultActionRef.current = true;
+      navigate(
+        `/tabuada/training?conceptId=${nextJourney.conceptId}&lessonNumber=${nextJourney.lessonNumber}`,
+        { state: { moduleJourney: nextJourney } }
+      );
+      return;
+    }
     navigate('/tabuada/training', { state: { config: nextStep.config } });
+  };
+
+  const handleBackToModule = () => {
+    if (!moduleJourney) return;
+    trackFlowEvent('module_result_back_to_module_click', {
+      moduleId: moduleJourney.moduleId,
+      moduleName: moduleJourney.moduleName,
+      conceptId: moduleJourney.conceptId,
+      conceptName: moduleJourney.conceptName,
+      lessonNumber: moduleJourney.lessonNumber,
+      sessionId,
+    });
+    hasTakenResultActionRef.current = true;
+    navigate(`/modules/${moduleJourney.moduleId}`);
   };
 
   return (
@@ -178,7 +268,9 @@ export default function TabuadaResult() {
               Análise de Performance
             </h1>
             <p className="text-[var(--nm-text-dimmed)] text-sm">
-              {getOperationName(config.operation)} por {config.base} — Nível {level}
+              {isModuleJourney && moduleJourney
+                ? `${moduleJourney.conceptName} - Aula ${moduleJourney.lessonNumber} (${getLessonLabel(moduleJourney.lessonNumber)})`
+                : `${getOperationName(config.operation)} por ${config.base} - Nivel ${level}`}
             </p>
           </div>
 
@@ -281,56 +373,75 @@ export default function TabuadaResult() {
             )}
 
             {/* ─── Próximo Passo Adaptativo ─── */}
-            <BlueprintCard label="PRÓXIMO_PASSO">
-              {/* Direção */}
-              <div
-                className="flex items-center gap-2 mb-3"
-                style={{ color: getDirectionColor(nextStep.direction) }}
-              >
-                {getDirectionIcon(nextStep.direction)}
-                <span className="text-sm font-semibold">
-                  {nextStep.label}
-                </span>
-                {result && (
-                  <span className="ml-auto text-[10px] font-[family-name:var(--font-data)] uppercase tracking-[0.08em] text-[var(--nm-text-annotation)]">
-                    Nível {result.adaptive_level}
-                  </span>
-                )}
-              </div>
-
-              {/* Config do próximo passo */}
-              <div className="flex gap-2 mb-3">
-                <span className="px-2 py-0.5 rounded-sm bg-[var(--nm-bg-main)] border border-[var(--nm-grid-line)] text-[10px] font-[family-name:var(--font-data)] text-[var(--nm-text-annotation)] uppercase tracking-[0.08em]">
-                  {nextStep.config.mode === 'sequential' ? 'Sequencial' : 'Aleatório'}
-                </span>
-                <span className="px-2 py-0.5 rounded-sm bg-[var(--nm-bg-main)] border border-[var(--nm-grid-line)] text-[10px] font-[family-name:var(--font-data)] text-[var(--nm-text-annotation)] uppercase tracking-[0.08em]">
-                  {nextStep.config.timerMode === 'timed' ? 'Com cronômetro' : 'Sem cronômetro'}
-                </span>
-              </div>
-
-              {/* Razão */}
-              <p className="text-xs text-[var(--nm-text-dimmed)] mb-4 leading-relaxed">
-                {nextStep.reason}
-              </p>
-
-              {/* Reforço estrutural: alerta adicional se unstable */}
-              {analysis.status === 'unstable' && (
-                <div className="mb-4 p-3 rounded-[var(--radius-technical)] border border-[var(--nm-accent-error)] bg-[var(--nm-bg-main)]">
-                  <div className="text-[10px] font-[family-name:var(--font-data)] uppercase tracking-[0.1em] text-[var(--nm-accent-error)] mb-1">
-                    REFORÇO_ESTRUTURAL
+            <BlueprintCard label="PROXIMO_PASSO">
+              {isModuleJourney && moduleJourney ? (
+                <>
+                  {canAdvanceToNextLesson ? (
+                    <div className="text-sm text-[var(--nm-text-dimmed)] mb-4">
+                      Aula {(moduleJourney.lessonNumber + 1)} - {getLessonLabel(moduleJourney.lessonNumber + 1)} desbloqueada.
+                    </div>
+                  ) : (
+                    <div className="text-sm text-[var(--nm-text-dimmed)] mb-4">
+                      {analysis.status === 'unstable'
+                        ? 'Reforco recomendado antes de avancar.'
+                        : 'A trilha deste conceito foi concluida.'}
+                    </div>
+                  )}
+                  <button
+                    onClick={canAdvanceToNextLesson ? handleNextStep : handleRetry}
+                    className="w-full py-2 px-4 rounded-[var(--radius-technical)] border border-[var(--nm-accent-primary)] text-[var(--nm-accent-primary)] text-sm hover:bg-[var(--nm-accent-primary)] hover:text-[var(--nm-bg-main)] transition-colors mb-3"
+                  >
+                    {canAdvanceToNextLesson ? 'Iniciar proxima aula' : 'Repetir aula atual'}
+                  </button>
+                  <ActionButton variant="secondary" onClick={handleBackToModule} className="w-full">
+                    Voltar para {moduleJourney.moduleName}
+                  </ActionButton>
+                </>
+              ) : (
+                <>
+                  <div
+                    className="flex items-center gap-2 mb-3"
+                    style={{ color: getDirectionColor(nextStep.direction) }}
+                  >
+                    {getDirectionIcon(nextStep.direction)}
+                    <span className="text-sm font-semibold">
+                      {nextStep.label}
+                    </span>
+                    {result && (
+                      <span className="ml-auto text-[10px] font-[family-name:var(--font-data)] uppercase tracking-[0.08em] text-[var(--nm-text-annotation)]">
+                        Nivel {result.adaptive_level}
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs text-[var(--nm-text-dimmed)] leading-relaxed">
-                    Retorne ao modo sequencial sem cronômetro para reconstruir o padrão de evocação antes de avançar.
+                  <div className="flex gap-2 mb-3">
+                    <span className="px-2 py-0.5 rounded-sm bg-[var(--nm-bg-main)] border border-[var(--nm-grid-line)] text-[10px] font-[family-name:var(--font-data)] text-[var(--nm-text-annotation)] uppercase tracking-[0.08em]">
+                      {nextStep.config.mode === 'sequential' ? 'Sequencial' : 'Aleatorio'}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-sm bg-[var(--nm-bg-main)] border border-[var(--nm-grid-line)] text-[10px] font-[family-name:var(--font-data)] text-[var(--nm-text-annotation)] uppercase tracking-[0.08em]">
+                      {nextStep.config.timerMode === 'timed' ? 'Com cronometro' : 'Sem cronometro'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--nm-text-dimmed)] mb-4 leading-relaxed">
+                    {nextStep.reason}
                   </p>
-                </div>
+                  {analysis.status === 'unstable' && (
+                    <div className="mb-4 p-3 rounded-[var(--radius-technical)] border border-[var(--nm-accent-error)] bg-[var(--nm-bg-main)]">
+                      <div className="text-[10px] font-[family-name:var(--font-data)] uppercase tracking-[0.1em] text-[var(--nm-accent-error)] mb-1">
+                        REFORCO_ESTRUTURAL
+                      </div>
+                      <p className="text-xs text-[var(--nm-text-dimmed)] leading-relaxed">
+                        Retorne ao modo sequencial sem cronometro para reconstruir o padrao de evocacao antes de avancar.
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    onClick={handleNextStep}
+                    className="w-full py-2 px-4 rounded-[var(--radius-technical)] border border-[var(--nm-accent-primary)] text-[var(--nm-accent-primary)] text-sm hover:bg-[var(--nm-accent-primary)] hover:text-[var(--nm-bg-main)] transition-colors"
+                  >
+                    Treinar agora
+                  </button>
+                </>
               )}
-
-              <button
-                onClick={handleNextStep}
-                className="w-full py-2 px-4 rounded-[var(--radius-technical)] border border-[var(--nm-accent-primary)] text-[var(--nm-accent-primary)] text-sm hover:bg-[var(--nm-accent-primary)] hover:text-[var(--nm-bg-main)] transition-colors"
-              >
-                Treinar agora
-              </button>
             </BlueprintCard>
 
             {/* Ações */}
@@ -354,10 +465,10 @@ export default function TabuadaResult() {
             {/* Voltar ao dashboard */}
             <div className="text-center">
               <Link
-                to="/dashboard"
+                to={isModuleJourney && moduleJourney ? `/modules/${moduleJourney.moduleId}` : '/dashboard'}
                 className="text-sm text-[var(--nm-text-dimmed)] hover:text-[var(--nm-text-high)] transition-colors"
               >
-                Voltar ao dashboard
+                {isModuleJourney ? `Voltar para ${moduleJourney?.moduleName}` : 'Voltar ao dashboard'}
               </Link>
             </div>
           </div>

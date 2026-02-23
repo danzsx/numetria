@@ -126,6 +126,7 @@ export interface Database {
           mode: 'sequential' | 'random'
           timer_mode: 'timed' | 'untimed'
           level: number
+          module_id: 'tabuada' | 'foundational' | 'consolidation' | 'automacao' | 'ritmo' | 'precisao' | null
           concept_id: number | null
           lesson_number: number | null
           total_problems: number
@@ -148,6 +149,7 @@ export interface Database {
           mode: 'sequential' | 'random'
           timer_mode: 'timed' | 'untimed'
           level: number
+          module_id?: 'tabuada' | 'foundational' | 'consolidation' | 'automacao' | 'ritmo' | 'precisao' | null
           concept_id?: number | null
           lesson_number?: number | null
           total_problems: number

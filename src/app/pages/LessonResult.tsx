@@ -6,6 +6,14 @@ import { SessionMetrics } from '../utils/tabuadaEngine';
 import { SessionResult } from '../../services/session.service';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
+interface ModuleJourneyContext {
+  moduleId: string;
+  moduleName: string;
+  conceptId: number;
+  conceptName: string;
+  lessonNumber: number;
+}
+
 interface LessonResultState {
   metrics: SessionMetrics;
   analysis: {
@@ -16,6 +24,7 @@ interface LessonResultState {
   conceptId: number;
   lessonNumber: number;
   result?: SessionResult | null;
+  moduleJourney?: ModuleJourneyContext | null;
 }
 
 const LESSON_NAMES: Record<number, string> = {
@@ -37,17 +46,18 @@ export default function LessonResult() {
 
   if (!data) return null;
 
-  const { metrics, analysis, conceptId, lessonNumber, result } = data;
+  const { metrics, analysis, conceptId, lessonNumber, result, moduleJourney } = data;
+  const backUrl = moduleJourney?.moduleId ? `/modules/${moduleJourney.moduleId}` : '/modules';
   const lessonName = LESSON_NAMES[lessonNumber] ?? `Aula ${lessonNumber}`;
 
   const getStatusColor = (status: string) => {
-    if (status === 'stable')   return 'var(--nm-accent-stability)';
+    if (status === 'stable') return 'var(--nm-accent-stability)';
     if (status === 'unstable') return 'var(--nm-accent-error)';
     return 'var(--nm-accent-primary)';
   };
 
   const getStatusIcon = (status: string) => {
-    if (status === 'stable')   return <TrendingUp  size={20} />;
+    if (status === 'stable') return <TrendingUp size={20} />;
     if (status === 'unstable') return <TrendingDown size={20} />;
     return <Minus size={20} />;
   };
@@ -172,9 +182,9 @@ export default function LessonResult() {
             </BlueprintCard>
 
             {/* Ação principal */}
-            <Link to="/modules">
+            <Link to={backUrl}>
               <ActionButton variant="primary" className="w-full">
-                Voltar aos módulos
+                Voltar ao módulo
               </ActionButton>
             </Link>
           </div>

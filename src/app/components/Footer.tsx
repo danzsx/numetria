@@ -36,12 +36,12 @@ export function Footer() {
               INSTITUCIONAL
             </div>
             <div className="space-y-2">
-              <a href="#" className="block text-sm text-[var(--nm-text-dimmed)] hover:text-[var(--nm-text-high)] transition-colors">
+              <Link to="/manifesto" className="block text-sm text-[var(--nm-text-dimmed)] hover:text-[var(--nm-text-high)] transition-colors">
                 Manifesto
-              </a>
-              <a href="#" className="block text-sm text-[var(--nm-text-dimmed)] hover:text-[var(--nm-text-high)] transition-colors">
+              </Link>
+              <Link to="/method" className="block text-sm text-[var(--nm-text-dimmed)] hover:text-[var(--nm-text-high)] transition-colors">
                 Método
-              </a>
+              </Link>
               <a href="#" className="block text-sm text-[var(--nm-text-dimmed)] hover:text-[var(--nm-text-high)] transition-colors">
                 Privacidade
               </a>

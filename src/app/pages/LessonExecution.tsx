@@ -9,7 +9,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   TabuadaConfig,
   Problem,
-  generateProblems,
   getOperationName,
   getOperationSymbol,
   getLevel,
@@ -25,6 +24,13 @@ import { getLessonContent } from '../../data/lessonContent';
 import { LessonContent, ConsolidationQuestion, WarmupQuestion } from '../../types/lesson';
 import { StepBlock } from '../components/lesson/StepBlock';
 import { GuidedStepInput } from '../components/lesson/GuidedStepInput';
+import { TheoryPhase } from '../components/theory/TheoryPhase';
+import { getTheoryContent } from '../../data/theoryContent';
+import { getModuleFromConceptId } from '../utils/moduleContext';
+import {
+  createConceptLessonEngine,
+  lessonNumberToConceptMode,
+} from '../utils/conceptLessonEngine';
 
 // ─── Símbolos de operação ─────────────────────────────────────
 
@@ -112,15 +118,21 @@ function LessonTypeStructure({ conceptId }: { conceptId: number }) {
   const navigate = useNavigate();
   const content = getLessonContent(conceptId, 1);
   const config = getConfigForLesson(conceptId, 1);
-  const { startSession, recordAttempt, finishSession, saving, saveError } = useSession();
+  const moduleId = getModuleFromConceptId(conceptId)?.id ?? null;
+  const theoryData = getTheoryContent(conceptId);
+  const { startSession, recordAttempt, finishSession, recordTheoryCompletion, saving, saveError } = useSession();
 
-  const [currentBlock, setCurrentBlock] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [currentBlock, setCurrentBlock] = useState<1 | 2 | 'theory' | 3 | 4 | 5 | 6>(1);
   const [block4Data, setBlock4Data] = useState<{ correctCount: number; times: number[] } | null>(null);
   const [sessionData, setSessionData] = useState<CombinedSessionData | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const [calibrationStatus, setCalibrationStatus] = useState<'ok' | 'assisted' | null>(null);
+  const [cognitiveAnchor, setCognitiveAnchor] = useState<string | null>(null);
+  const [theoryProgress, setTheoryProgress] = useState(0);
+  const [theorySubStep, setTheorySubStep] = useState(1);
 
   useEffect(() => {
-    startSession(config, conceptId, 1);
+    startSession(config, conceptId, 1, moduleId);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!content) {
@@ -138,11 +150,25 @@ function LessonTypeStructure({ conceptId }: { conceptId: number }) {
     );
   }
 
-  // Mapeamento bloco → % progresso (6 blocos completos)
-  const blockProgress: Record<number, number> = { 1: 17, 2: 33, 3: 50, 4: 67, 5: 83, 6: 100 };
+  // Progresso dinâmico — quando há teoria, escala 8→50 progressivamente
+  const progressPercent =
+    currentBlock === 1       ? 8 :
+    currentBlock === 'theory'? 8 + (theoryProgress * 0.42) :
+    currentBlock === 2       ? 33 :
+    currentBlock === 3       ? 58 :
+    currentBlock === 4       ? 72 :
+    currentBlock === 5       ? 86 :
+    100;
 
-  const handleBlock1Complete = () => setCurrentBlock(2);
+  const handleBlock1Complete = () => setCurrentBlock(theoryData ? 'theory' : 2);
   const handleBlock2Complete = () => setCurrentBlock(3);
+
+  const handleTheoryComplete = (status: 'ok' | 'assisted') => {
+    setCalibrationStatus(status);
+    setCognitiveAnchor(theoryData!.commonError.cognitiveAnchor);
+    recordTheoryCompletion(status);
+    setCurrentBlock(3);
+  };
   const handleBlock3Complete = () => setCurrentBlock(4);
 
   const handleBlock4Complete = (correctCount: number, times: number[]) => {
@@ -185,7 +211,10 @@ function LessonTypeStructure({ conceptId }: { conceptId: number }) {
           ← Sair
         </button>
         <div className="text-[var(--nm-text-annotation)] font-[family-name:var(--font-data)] text-[10px] uppercase tracking-[0.15em]">
-          AULA_ESTRUTURA // CONCEPT_{String(conceptId).padStart(2, '0')} // BLOCO_{currentBlock}
+          {currentBlock === 'theory'
+            ? `AULA_ESTRUTURA // CONCEPT_${String(conceptId).padStart(2, '0')} // TEORIA_${theorySubStep}/7`
+            : `AULA_ESTRUTURA // CONCEPT_${String(conceptId).padStart(2, '0')} // BLOCO_${currentBlock}`
+          }
         </div>
         <div className="text-[var(--nm-text-dimmed)] text-xs mt-1">
           {content.title} — {content.techniqueName}
@@ -204,6 +233,22 @@ function LessonTypeStructure({ conceptId }: { conceptId: number }) {
               transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
             >
               <Block1Warmup content={content} onComplete={handleBlock1Complete} />
+            </motion.div>
+          )}
+          {currentBlock === 'theory' && theoryData && (
+            <motion.div
+              key="theory"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
+            >
+              <TheoryPhase
+                content={theoryData}
+                onComplete={handleTheoryComplete}
+                onProgressChange={setTheoryProgress}
+                onStepChange={setTheorySubStep}
+              />
             </motion.div>
           )}
           {currentBlock === 2 && (
@@ -247,6 +292,7 @@ function LessonTypeStructure({ conceptId }: { conceptId: number }) {
                 content={content}
                 recordAttempt={recordAttempt}
                 onComplete={handleBlock4Complete}
+                cognitiveAnchor={cognitiveAnchor}
               />
             </motion.div>
           )}
@@ -289,7 +335,7 @@ function LessonTypeStructure({ conceptId }: { conceptId: number }) {
       <div className="flex-shrink-0 h-[2px] bg-[var(--nm-bg-surface)]">
         <motion.div
           className="h-full bg-[var(--nm-accent-primary)]"
-          animate={{ width: `${blockProgress[currentBlock] ?? 0}%` }}
+          animate={{ width: `${progressPercent}%` }}
           transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }}
         />
       </div>
@@ -477,9 +523,10 @@ interface BlockConsolidationProps {
   content: LessonContent;
   recordAttempt: (attempt: ProblemAttempt) => void;
   onComplete: (correctCount: number, times: number[]) => void;
+  cognitiveAnchor?: string | null;
 }
 
-function Block4Consolidation({ content, recordAttempt, onComplete }: BlockConsolidationProps) {
+function Block4Consolidation({ content, recordAttempt, onComplete, cognitiveAnchor }: BlockConsolidationProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const questionStartRef = useRef(Date.now());
 
@@ -493,6 +540,8 @@ function Block4Consolidation({ content, recordAttempt, onComplete }: BlockConsol
   const [summaryMetrics, setSummaryMetrics] = useState<SessionMetrics | null>(null);
   const [summaryCorrect, setSummaryCorrect] = useState(0);
 
+  const [anchorCollapsed, setAnchorCollapsed] = useState(false);
+
   const questions = content.consolidation;
   const question = questions[index];
 
@@ -502,6 +551,14 @@ function Block4Consolidation({ content, recordAttempt, onComplete }: BlockConsol
       inputRef.current?.focus();
     }
   }, [index, phase]);
+
+  // Colapsa âncora cognitiva após o 3.º problema resolvido
+  useEffect(() => {
+    if (index >= 2 && cognitiveAnchor) {
+      const t = setTimeout(() => setAnchorCollapsed(true), 500);
+      return () => clearTimeout(t);
+    }
+  }, [index, cognitiveAnchor]);
 
   const handleSubmit = () => {
     const num = parseInt(answer);
@@ -611,7 +668,20 @@ function Block4Consolidation({ content, recordAttempt, onComplete }: BlockConsol
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-6">
-      <div className="max-w-sm w-full">
+      <div className="relative max-w-sm w-full">
+        {/* Badge âncora cognitiva */}
+        {cognitiveAnchor && (
+          <motion.div
+            animate={{ height: anchorCollapsed ? 20 : 'auto', opacity: anchorCollapsed ? 0.4 : 1 }}
+            transition={{ duration: 0.4 }}
+            className="absolute top-2 right-2 cursor-pointer overflow-hidden max-w-[140px]"
+            onClick={() => setAnchorCollapsed(c => !c)}
+          >
+            <div className="text-[9px] font-[family-name:var(--font-data)] uppercase tracking-[0.12em] px-2 py-1 rounded border border-[var(--nm-accent-primary)] text-[var(--nm-accent-primary)] bg-[var(--nm-bg-main)] whitespace-nowrap overflow-hidden text-ellipsis">
+              {anchorCollapsed ? '▸' : cognitiveAnchor}
+            </div>
+          </motion.div>
+        )}
         <div className="text-center mb-8">
           <div className="text-[var(--nm-text-annotation)] font-[family-name:var(--font-data)] text-[10px] uppercase tracking-[0.15em] mb-1">
             CONSOLIDAÇÃO_ESTRUTURAL
@@ -963,14 +1033,43 @@ function LessonTrainingCore({
 }) {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
+  const moduleId = getModuleFromConceptId(conceptId)?.id ?? null;
+  const proMode =
+    conceptId >= 16 && conceptId <= 18
+      ? 'flow'
+      : conceptId >= 19 && conceptId <= 21
+      ? 'rhythm'
+      : conceptId >= 22 && conceptId <= 24
+      ? 'precision'
+      : null;
+  const conceptLesson = createConceptLessonEngine({
+    moduleId: moduleId ?? 'foundational',
+    conceptId,
+    lessonNumber: (lessonNumber === 1 || lessonNumber === 2 || lessonNumber === 3
+      ? lessonNumber
+      : 1) as 1 | 2 | 3,
+    mode: lessonNumberToConceptMode(lessonNumber),
+    difficultyTier: Math.min(4, Math.max(1, getLevel(config))) as 1 | 2 | 3 | 4,
+    adaptiveProfile: {
+      mode: config.mode,
+      timerMode: proMode === 'rhythm' ? 'timed' : config.timerMode,
+      proMode,
+    },
+  });
+  const resolvedConfig: TabuadaConfig = {
+    ...config,
+    operation: conceptLesson.lessonPlan.operation,
+    base: conceptLesson.lessonPlan.base,
+    timerMode: conceptLesson.timerPolicy.timerMode,
+  };
 
   const { startSession, recordAttempt, finishSession, saving, saveError } = useSession();
 
   useEffect(() => {
-    startSession(config, conceptId, lessonNumber);
+    startSession(resolvedConfig, conceptId, lessonNumber, moduleId);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [problems] = useState<Problem[]>(() => generateProblems(config));
+  const [problems] = useState<Problem[]>(() => conceptLesson.questionSet);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -983,16 +1082,16 @@ function LessonTrainingCore({
 
   const currentProblem = problems[currentIndex];
   const totalProblems = problems.length;
-  const level = getLevel(config);
+  const level = getLevel(resolvedConfig);
 
   useEffect(() => {
-    if (config.timerMode === 'timed' && !sessionComplete) {
+    if (resolvedConfig.timerMode === 'timed' && !sessionComplete) {
       const interval = setInterval(() => {
         setElapsedTime(Date.now() - problemStartTime);
       }, 100);
       return () => clearInterval(interval);
     }
-  }, [config.timerMode, problemStartTime, sessionComplete]);
+  }, [resolvedConfig.timerMode, problemStartTime, sessionComplete]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -1024,7 +1123,7 @@ function LessonTrainingCore({
       setTimes(newTimes);
       setCorrectCount(newCorrectCount);
 
-      setFeedback(`Execução estável. ${config.timerMode === 'timed' ? (timeTaken / 1000).toFixed(1) + 's' : ''}`);
+      setFeedback(`Execução estável. ${resolvedConfig.timerMode === 'timed' ? (timeTaken / 1000).toFixed(1) + 's' : ''}`);
       setIsError(false);
 
       setTimeout(async () => {
@@ -1061,8 +1160,8 @@ function LessonTrainingCore({
 
   if (!currentProblem) return null;
 
-  const operationSymbol = getOperationSymbol(config.operation);
-  const operationName = getOperationName(config.operation);
+  const operationSymbol = getOperationSymbol(resolvedConfig.operation);
+  const operationName = getOperationName(resolvedConfig.operation);
   const lessonLabel = lessonNumber === 2 ? 'COMPRESSÃO' : 'RITMO';
 
   return (
@@ -1081,13 +1180,13 @@ function LessonTrainingCore({
           AULA_{lessonLabel} // CONCEPT_{String(conceptId).padStart(2, '0')} // NÍV_{String(level).padStart(2, '0')}
         </div>
         <div className="text-[var(--nm-text-dimmed)] text-xs mt-2">
-          {operationName} por {config.base} // Questão {currentIndex + 1}/{totalProblems}
+          {operationName} por {resolvedConfig.base} // Questão {currentIndex + 1}/{totalProblems}
         </div>
       </div>
 
       {/* Timer */}
       <div className="absolute top-6 right-6">
-        {config.timerMode === 'timed' ? (
+        {resolvedConfig.timerMode === 'timed' ? (
           <div className="text-right">
             <div className="text-[var(--nm-text-annotation)] font-[family-name:var(--font-data)] text-[10px] uppercase tracking-[0.15em] mb-1">
               TEMPO

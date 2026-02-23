@@ -53,4 +53,66 @@ export interface LessonContent {
   guided: GuidedProblem[]
   consolidation: ConsolidationQuestion[]
   compression: ConsolidationQuestion[]
+  theory?: TheoryContent  // undefined = fallback para StepBlock
+}
+
+// ─── Tipos para Aula Teórica Interativa ──────────────────────────────────────
+
+export interface TheoryStep {
+  prompt: string
+  answer: number
+}
+
+export interface TheoryContent {
+  conceptId: number
+
+  hook: {
+    problem: { operand1: number; operand2: number; operation: string }
+    answer: number
+    visualHint: string
+  }
+
+  intuition: {
+    lines: string[]
+    keyEquation: string
+    comprehensionQuestion: {
+      question: string
+      options: string[]
+      correctIndex: number
+      explanation: string
+    }
+  }
+
+  strategy: {
+    innerVoice: string[]
+    gapInputs: TheoryStep[]
+  }
+
+  guidedExample: {
+    operand1: number
+    operand2: number
+    steps: TheoryStep[]
+    compactThought: string
+  }
+
+  simulatedPractice: {
+    operand1: number
+    operand2: number
+    steps: TheoryStep[]
+    successMessage: string
+  }
+
+  commonError: {
+    wrongProblem: { operand1: number; operand2: number; wrongAnswer: number }
+    errorStep: string
+    errorExplanation: string
+    cognitiveAnchor: string
+  }
+
+  calibration: {
+    operand1: number
+    operand2: number
+    answer: number
+    steps: TheoryStep[]
+  }
 }

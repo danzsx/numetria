@@ -9,6 +9,9 @@ import { PaywallModal } from '../components/PaywallModal';
 import { CheckCircle2, Play, Loader2, Star, Lock } from 'lucide-react';
 import { useConceptProgress } from '../../hooks/useConceptProgress';
 import { ConceptProgress } from '../../types/database';
+import type { ModuleId, ModuleJourneyContext } from '../utils/moduleContext';
+import { trackFlowEvent } from '../utils/flowTelemetry';
+import { isModuleEnabled } from '../utils/moduleFlags';
 
 // ─── Skeleton ─────────────────────────────────────────────────
 
@@ -38,18 +41,18 @@ function LessonSkeleton() {
 // concept_id 22-24 → Precisão (PRO)
 
 const FOUNDATIONAL_CONCEPTS = [
-  { id: 1,  name: 'Multiplicação por 5' },
-  { id: 2,  name: 'Soma até 100 com transporte' },
-  { id: 3,  name: 'Multiplicação por 9' },
-  { id: 4,  name: 'Divisão exata por 2' },
-  { id: 5,  name: 'Multiplicação por 2 e 4' },
-  { id: 6,  name: 'Adição de três parcelas' },
-  { id: 7,  name: 'Subtração com resultado positivo' },
-  { id: 8,  name: 'Multiplicação por 10 e 100' },
+  { id: 1, name: 'Multiplicação por 5' },
+  { id: 2, name: 'Soma até 100 com transporte' },
+  { id: 3, name: 'Multiplicação por 9' },
+  { id: 4, name: 'Divisão exata por 2' },
+  { id: 5, name: 'Multiplicação por 2 e 4' },
+  { id: 6, name: 'Adição de três parcelas' },
+  { id: 7, name: 'Subtração com resultado positivo' },
+  { id: 8, name: 'Multiplicação por 10 e 100' },
 ];
 
 const CONSOLIDATION_CONCEPTS = [
-  { id: 9,  name: 'Subtração com empréstimo' },
+  { id: 9, name: 'Subtração com empréstimo' },
   { id: 10, name: 'Multiplicação por 3 e 6' },
   { id: 11, name: 'Divisão por 3 e 6' },
   { id: 12, name: 'Multiplicação por 7 e 8' },
@@ -87,9 +90,9 @@ function conceptProgressToLessons(cp: ConceptProgress | null) {
 
   if (!cp) {
     return [
-      { id: 1, name: 'Estrutura',  status: 'locked' as const },
+      { id: 1, name: 'Estrutura', status: 'locked' as const },
       { id: 2, name: 'Compressão', status: 'locked' as const },
-      { id: 3, name: 'Ritmo',      status: 'locked' as const },
+      { id: 3, name: 'Ritmo', status: 'locked' as const },
     ];
   }
 
@@ -103,9 +106,9 @@ function conceptProgressToLessons(cp: ConceptProgress | null) {
       : l1;
 
   return [
-    { id: 1, name: 'Estrutura',  status: effectiveL1 },
+    { id: 1, name: 'Estrutura', status: effectiveL1 },
     { id: 2, name: 'Compressão', status: l2 },
-    { id: 3, name: 'Ritmo',      status: l3 },
+    { id: 3, name: 'Ritmo', status: l3 },
   ];
 }
 
@@ -134,11 +137,11 @@ export default function Modules() {
 function ModuleList() {
   const { getModuleProgress, loading, isPro } = useConceptProgress();
 
-  const foundationalProgress  = getModuleProgress(1, 8);
+  const foundationalProgress = getModuleProgress(1, 8);
   const consolidationProgress = getModuleProgress(9, 15);
-  const automacaoProgress     = getModuleProgress(16, 18);
-  const ritmoProgress         = getModuleProgress(19, 21);
-  const precisaoProgress      = getModuleProgress(22, 24);
+  const automacaoProgress = getModuleProgress(16, 18);
+  const ritmoProgress = getModuleProgress(19, 21);
+  const precisaoProgress = getModuleProgress(22, 24);
 
   const freeModules = [
     {
@@ -195,7 +198,10 @@ function ModuleList() {
     },
   ];
 
-  const allModules = [...freeModules, ...proModules];
+  const allModules = [
+    ...freeModules.filter((module) => module.id === 'tabuada' || isModuleEnabled(module.id as ModuleId)),
+    ...proModules.filter((module) => isModuleEnabled(module.id as ModuleId)),
+  ];
 
   return (
     <div className="min-h-screen">
@@ -222,7 +228,7 @@ function ModuleList() {
                     <BlueprintCard
                       label={module.id.toUpperCase()}
                       annotation={isProModule ? 'PRO' : (module.isNew ? 'NOVO' : `${module.concepts}_CONCEPTS`)}
-                      onClick={() => {}}
+                      onClick={() => { }}
                     >
                       <h3 className="text-xl font-semibold text-[var(--nm-text-high)] mb-2">
                         {module.name}
@@ -335,19 +341,67 @@ function ModuleDetail({ moduleId }: { moduleId: string }) {
     return <div>Módulo não encontrado</div>;
   }
 
+  if (!isModuleEnabled(moduleId as ModuleId)) {
+    return (
+      <div className="min-h-screen">
+        <Header isLoggedIn={true} />
+        <main className="pt-24 pb-16 px-6 mb-16 md:mb-0">
+          <div className="max-w-3xl mx-auto">
+            <BlueprintCard label="ROLLOUT_CONTROLADO">
+              <h1 className="text-xl font-semibold text-[var(--nm-text-high)] mb-2">
+                Modulo temporariamente desativado
+              </h1>
+              <p className="text-sm text-[var(--nm-text-dimmed)] mb-4">
+                Este modulo esta fora da onda ativa de liberacao. Ajuste a feature flag para reativar.
+              </p>
+              <Link to="/modules" className="text-sm text-[var(--nm-accent-primary)]">
+                {'<-'} Voltar para lista de modulos
+              </Link>
+            </BlueprintCard>
+          </div>
+        </main>
+        <Footer />
+        <MobileNav />
+      </div>
+    );
+  }
+
   const handleStartLesson = (conceptId: number, lessonNumber: 1 | 2 | 3) => {
     if (conceptId >= 16 && !isPro) {
       console.log('[analytics] pro_paywall_view', { conceptId, moduleName: module.name });
       setPaywallModule(module.name);
       return;
     }
-    navigate(`/tabuada/training?conceptId=${conceptId}&lessonNumber=${lessonNumber}`);
+    const journey: ModuleJourneyContext = {
+      moduleId: moduleId as ModuleJourneyContext['moduleId'],
+      moduleName: module.name,
+      conceptId,
+      conceptName: module.concepts.find((concept) => concept.id === conceptId)?.name ?? `Conceito ${conceptId}`,
+      lessonNumber,
+    };
+    trackFlowEvent('module_lesson_start', {
+      moduleId: journey.moduleId,
+      moduleName: journey.moduleName,
+      conceptId: journey.conceptId,
+      conceptName: journey.conceptName,
+      lessonNumber: journey.lessonNumber,
+      source: 'modules_page',
+    });
+    navigate(`/lesson/${conceptId}/${lessonNumber}`, {
+      state: { moduleJourney: journey },
+    });
+  };
+
+  const handleRestartModule = () => {
+    const firstConcept = module.concepts[0];
+    if (!firstConcept) return;
+    handleStartLesson(firstConcept.id, 1);
   };
 
   // Ícone por status de lição
   const getLessonIcon = (status: string) => {
     if (status === 'completed') return <CheckCircle2 size={16} className="text-[var(--nm-accent-stability)]" />;
-    if (status === 'available') return <Play         size={16} className="text-[var(--nm-accent-primary)]" />;
+    if (status === 'available') return <Play size={16} className="text-[var(--nm-accent-primary)]" />;
     return <Lock size={16} className="text-[var(--nm-text-annotation)] opacity-40" />;
   };
 
@@ -357,10 +411,10 @@ function ModuleDetail({ moduleId }: { moduleId: string }) {
       case 'mastered':
         return (
           <div className="flex items-center gap-1 px-2 py-0.5 rounded-sm"
-               style={{ background: 'rgba(255,193,7,0.12)', border: '1px solid rgba(255,193,7,0.4)' }}>
+            style={{ background: 'rgba(255,193,7,0.12)', border: '1px solid rgba(255,193,7,0.4)' }}>
             <Star size={10} style={{ color: '#FFC107' }} />
             <span className="text-[10px] font-[family-name:var(--font-data)] uppercase tracking-[0.1em]"
-                  style={{ color: '#FFC107' }}>
+              style={{ color: '#FFC107' }}>
               Masterizado
             </span>
           </div>
@@ -396,7 +450,7 @@ function ModuleDetail({ moduleId }: { moduleId: string }) {
   // Cor da barra de progresso por status
   const getProgressColor = (status: string, isProConcept: boolean): string => {
     if (isProConcept) return '#3A72F8';
-    if (status === 'mastered')  return '#FFC107';
+    if (status === 'mastered') return '#FFC107';
     if (status === 'completed') return 'var(--nm-accent-stability)';
     return 'var(--nm-accent-primary)';
   };
@@ -434,6 +488,11 @@ function ModuleDetail({ moduleId }: { moduleId: string }) {
               {module.name}
             </h1>
             <p className="text-[var(--nm-text-dimmed)]">{module.description}</p>
+            <div className="mt-4">
+              <ActionButton variant="secondary" onClick={handleRestartModule}>
+                Refazer modulo
+              </ActionButton>
+            </div>
           </div>
 
           {loading ? (
@@ -449,15 +508,15 @@ function ModuleDetail({ moduleId }: { moduleId: string }) {
           ) : (
             <div className="space-y-6">
               {module.concepts.map((concept, idx) => {
-                const cp       = getConceptById(concept.id);
-                const lessons  = conceptProgressToLessons(cp);
+                const cp = getConceptById(concept.id);
+                const lessons = conceptProgressToLessons(cp);
                 const progress = conceptProgressPercent(cp);
-                const status   = cp?.status ?? 'locked';
-                const isMastered  = status === 'mastered';
+                const status = cp?.status ?? 'locked';
+                const isMastered = status === 'mastered';
                 const isCompleted = status === 'completed' || isMastered;
-                const isLocked    = status === 'locked';
+                const isLocked = status === 'locked';
                 const isProConcept = concept.id >= 16;
-                const isLockedPro  = isProConcept && !isPro;
+                const isLockedPro = isProConcept && !isPro;
 
                 return (
                   <div
@@ -476,10 +535,10 @@ function ModuleDetail({ moduleId }: { moduleId: string }) {
                             color: isMastered
                               ? '#FFC107'
                               : isProConcept
-                              ? '#3A72F8'
-                              : isLocked
-                              ? 'var(--nm-text-annotation)'
-                              : 'var(--nm-text-high)',
+                                ? '#3A72F8'
+                                : isLocked
+                                  ? 'var(--nm-text-annotation)'
+                                  : 'var(--nm-text-high)',
                             opacity: isLocked && !isProConcept ? 0.5 : 1,
                           }}
                         >
@@ -528,11 +587,10 @@ function ModuleDetail({ moduleId }: { moduleId: string }) {
                           {lessons.map((lesson) => (
                             <div
                               key={lesson.id}
-                              className={`flex items-center justify-between p-3 rounded-[var(--radius-technical)] transition-colors ${
-                                lesson.status === 'available'
+                              className={`flex items-center justify-between p-3 rounded-[var(--radius-technical)] transition-colors ${lesson.status === 'available'
                                   ? 'bg-[var(--nm-bg-main)] border border-[var(--nm-accent-primary)]'
                                   : 'bg-[var(--nm-bg-main)]'
-                              }`}
+                                }`}
                               style={{
                                 opacity: lesson.status === 'locked' ? 0.45 : 1,
                               }}
@@ -546,23 +604,37 @@ function ModuleDetail({ moduleId }: { moduleId: string }) {
                                       lesson.status === 'completed'
                                         ? 'var(--nm-text-high)'
                                         : lesson.status === 'available'
-                                        ? 'var(--nm-text-high)'
-                                        : 'var(--nm-text-annotation)',
+                                          ? 'var(--nm-text-high)'
+                                          : 'var(--nm-text-annotation)',
                                   }}
                                 >
                                   {lesson.name}
                                 </span>
                               </div>
 
-                              {lesson.status === 'available' && (
-                                <ActionButton
-                                  variant="primary"
-                                  className="!py-1 !px-4 !text-sm"
-                                  onClick={() => handleStartLesson(concept.id, lesson.id as 1 | 2 | 3)}
-                                >
-                                  Iniciar
-                                </ActionButton>
-                              )}
+                              <div className="flex items-center gap-2">
+                                {lesson.id === 1 && lesson.status !== 'locked' && (
+                                  <span
+                                    className="text-[9px] font-[family-name:var(--font-data)] uppercase tracking-[0.1em] px-1.5 py-0.5 rounded-sm border"
+                                    style={{
+                                      borderColor: 'rgba(var(--nm-accent-primary-rgb, 0,200,150), 0.4)',
+                                      color: 'var(--nm-accent-primary)',
+                                      background: 'rgba(var(--nm-accent-primary-rgb, 0,200,150), 0.06)',
+                                    }}
+                                  >
+                                    Interativa
+                                  </span>
+                                )}
+                                {(lesson.status === 'available' || lesson.status === 'completed') && (
+                                  <ActionButton
+                                    variant={lesson.status === 'completed' ? 'secondary' : 'primary'}
+                                    className="!py-1 !px-4 !text-sm"
+                                    onClick={() => handleStartLesson(concept.id, lesson.id as 1 | 2 | 3)}
+                                  >
+                                    {lesson.status === 'completed' ? 'Refazer' : 'Iniciar'}
+                                  </ActionButton>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>

@@ -14,6 +14,7 @@ export interface SessionResult {
   recommendation: string | null
   streak: number
   adaptive_level: number
+  new_status?: 'locked' | 'available' | 'in_progress' | 'completed' | 'mastered' | null
 }
 
 export const sessionService = {
@@ -24,7 +25,10 @@ export const sessionService = {
     attempts: ProblemAttempt[],
     startedAt: Date,
     conceptId?: number | null,
-    lessonNumber?: number | null
+    lessonNumber?: number | null,
+    moduleId?: string | null,
+    theoryCompleted?: boolean,
+    calibrationStatus?: 'ok' | 'assisted' | null
   ): Promise<SessionResult> {
     const payload = {
       operation: config.operation,
@@ -34,6 +38,9 @@ export const sessionService = {
       level: getLevel(config),
       concept_id: conceptId ?? null,
       lesson_number: lessonNumber ?? null,
+      module_id: moduleId ?? null,
+      theory_completed: theoryCompleted ?? false,
+      calibration_status: calibrationStatus ?? null,
       total_problems: metrics.totalProblems,
       correct_answers: metrics.correctAnswers,
       total_time_ms: metrics.totalTime,

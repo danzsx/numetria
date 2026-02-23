@@ -12,11 +12,12 @@ export function Header() {
 
   const navItems = isLoggedIn
     ? [
-        { label: 'Dashboard', path: '/dashboard' },
-        { label: 'Módulos', path: '/modules' },
-        { label: 'Histórico', path: '/history' },
-        { label: 'Protocolo', path: '/pro' }
-      ]
+      { label: 'Dashboard', path: '/dashboard' },
+      { label: 'Módulos', path: '/modules' },
+      { label: 'Classificador', path: '/classify' },
+      { label: 'Histórico', path: '/history' },
+      { label: 'Protocolo', path: '/pro' }
+    ]
     : [];
 
   const isActive = (path: string) => location.pathname === path;
@@ -29,8 +30,8 @@ export function Header() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-[var(--nm-grid-line)] bg-[var(--nm-bg-main)]/95 backdrop-blur-sm">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <Link 
-          to={isLoggedIn ? '/dashboard' : '/'} 
+        <Link
+          to={isLoggedIn ? '/dashboard' : '/'}
           className="text-[var(--nm-text-high)] font-[family-name:var(--font-data)] text-lg tracking-tight hover:text-[var(--nm-accent-primary)] transition-colors"
         >
           NUMETRIA
@@ -44,8 +45,8 @@ export function Header() {
                 to={item.path}
                 className={`
                   text-sm font-medium transition-colors
-                  ${isActive(item.path) 
-                    ? 'text-[var(--nm-text-high)]' 
+                  ${isActive(item.path)
+                    ? 'text-[var(--nm-text-high)]'
                     : 'text-[var(--nm-text-dimmed)] hover:text-[var(--nm-text-high)]'
                   }
                 `}
@@ -72,9 +73,9 @@ export function Header() {
               >
                 <LogOut size={15} className="text-[var(--nm-text-dimmed)] group-hover:text-red-400" />
               </button>
-              
+
               {/* Mobile menu button */}
-              <button 
+              <button
                 className="md:hidden w-8 h-8 flex items-center justify-center text-[var(--nm-text-high)]"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               >
@@ -110,8 +111,8 @@ export function Header() {
                 onClick={() => setMobileMenuOpen(false)}
                 className={`
                   block text-sm font-medium transition-colors
-                  ${isActive(item.path) 
-                    ? 'text-[var(--nm-text-high)]' 
+                  ${isActive(item.path)
+                    ? 'text-[var(--nm-text-high)]'
                     : 'text-[var(--nm-text-dimmed)]'
                   }
                 `}

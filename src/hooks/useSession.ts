@@ -30,6 +30,9 @@ export function useSession() {
   const configRef = useRef<TabuadaConfig | null>(null)
   const conceptIdRef = useRef<number | null>(null)
   const lessonNumberRef = useRef<number | null>(null)
+  const moduleIdRef = useRef<string | null>(null)
+  const theoryCompletedRef = useRef(false)
+  const calibrationStatusRef = useRef<'ok' | 'assisted' | null>(null)
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -37,14 +40,23 @@ export function useSession() {
   const startSession = useCallback((
     config: TabuadaConfig,
     conceptId?: number | null,
-    lessonNumber?: number | null
+    lessonNumber?: number | null,
+    moduleId?: string | null
   ) => {
     startedAtRef.current = new Date()
     attemptsRef.current = []
     configRef.current = config
     conceptIdRef.current = conceptId ?? null
     lessonNumberRef.current = lessonNumber ?? null
+    moduleIdRef.current = moduleId ?? null
+    theoryCompletedRef.current = false
+    calibrationStatusRef.current = null
     setSaveError(null)
+  }, [])
+
+  const recordTheoryCompletion = useCallback((status: 'ok' | 'assisted') => {
+    theoryCompletedRef.current = true
+    calibrationStatusRef.current = status
   }, [])
 
   const recordAttempt = useCallback((attempt: ProblemAttempt) => {
@@ -77,7 +89,10 @@ export function useSession() {
           attemptsRef.current,
           startedAtRef.current,
           conceptIdRef.current,
-          lessonNumberRef.current
+          lessonNumberRef.current,
+          moduleIdRef.current,
+          theoryCompletedRef.current,
+          calibrationStatusRef.current
         )
         return { metrics, analysis, result }
       } catch (err) {
@@ -92,5 +107,5 @@ export function useSession() {
     [user]
   )
 
-  return { saving, saveError, startSession, recordAttempt, finishSession }
+  return { saving, saveError, startSession, recordAttempt, finishSession, recordTheoryCompletion }
 }

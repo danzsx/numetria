@@ -31,19 +31,19 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen">
-      <Header isLoggedIn={false} />
-      
+      <Header />
+
       {/* Hero Section */}
       <section className="relative pt-32 pb-24 px-6 overflow-hidden">
         {/* Background grid pattern */}
-        <div 
+        <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
             backgroundImage: `linear-gradient(var(--nm-grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--nm-grid-line) 1px, transparent 1px)`,
             backgroundSize: '40px 40px'
           }}
         />
-        
+
         {/* Background number */}
         <div className="absolute right-0 top-1/2 -translate-y-1/2 opacity-[0.02] pointer-events-none">
           <div className="text-[24rem] font-[family-name:var(--font-data)] font-semibold tabular-nums">
@@ -55,9 +55,9 @@ export default function Landing() {
           <h1 className="text-5xl md:text-6xl font-semibold text-[var(--nm-text-high)] mb-6 leading-tight">
             Confiança cognitiva mensurável construída por método.
           </h1>
-          
+
           <p className="text-xl text-[var(--nm-text-dimmed)] mb-12 max-w-2xl mx-auto leading-relaxed">
-            Numetria é uma plataforma de treino mental estruturado focada em cálculo. 
+            Numetria é uma plataforma de treino mental estruturado focada em cálculo.
             Progressão técnica baseada em estabilidade, automação e mensuração contínua.
           </p>
 
@@ -67,9 +67,11 @@ export default function Landing() {
                 Iniciar treino
               </ActionButton>
             </Link>
-            <ActionButton variant="ghost" className="w-full sm:w-auto">
-              Conhecer o protocolo
-            </ActionButton>
+            <Link to="/manifesto">
+              <ActionButton variant="ghost" className="w-full sm:w-auto">
+                Conhecer o protocolo
+              </ActionButton>
+            </Link>
           </div>
         </div>
       </section>
@@ -88,7 +90,7 @@ export default function Landing() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {pillars.map((pillar, index) => (
-              <BlueprintCard 
+              <BlueprintCard
                 key={index}
                 label={`PILLAR_0${index + 1}`}
               >
@@ -108,6 +110,14 @@ export default function Landing() {
               </BlueprintCard>
             ))}
           </div>
+
+          <div className="mt-12 text-center">
+            <Link to="/method">
+              <ActionButton variant="ghost">
+                Ver detalhes do método
+              </ActionButton>
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -121,9 +131,9 @@ export default function Landing() {
             Treino estruturado, não prática aleatória
           </h2>
           <p className="text-[var(--nm-text-dimmed)] leading-relaxed mb-8">
-            Cada sessão é construída sobre princípios de consolidação neural. 
-            Progressão controlada através de módulos técnicos que isolam conceitos específicos, 
-            comprimem processos e mensuram variação. Sem gamificação emocional. 
+            Cada sessão é construída sobre princípios de consolidação neural.
+            Progressão controlada através de módulos técnicos que isolam conceitos específicos,
+            comprimem processos e mensuram variação. Sem gamificação emocional.
             Apenas método, repetição e dados.
           </p>
         </div>

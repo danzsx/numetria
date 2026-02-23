@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router'
 import Landing from './pages/Landing'
+import LandingPage from './pages/LandingPage'
 import Dashboard from './pages/Dashboard'
 import Modules from './pages/Modules'
 import Training from './pages/Training'
@@ -15,10 +16,16 @@ import Signup from './pages/Signup'
 import ForgotPassword from './pages/ForgotPassword'
 import ProtectedLayout from './components/ProtectedLayout'
 import ProLayout from './components/ProLayout'
+import OperationClassifier from './pages/OperationClassifier'
+import Manifesto from './pages/Manifesto'
+import Method from './pages/Method'
 
 export const router = createBrowserRouter([
   // ─── Rotas públicas ───────────────────────────────────────
   { path: '/', Component: Landing },
+  { path: '/landingpage', Component: LandingPage },
+  { path: '/manifesto', Component: Manifesto },
+  { path: '/method', Component: Method },
   { path: '/login', Component: Login },
   { path: '/signup', Component: Signup },
   { path: '/recuperar-senha', Component: ForgotPassword },
@@ -30,6 +37,7 @@ export const router = createBrowserRouter([
     Component: ProtectedLayout,
     children: [
       { path: 'dashboard', Component: Dashboard },
+      { path: 'classify', Component: OperationClassifier },
       { path: 'modules', Component: Modules },
       { path: 'modules/:moduleId', Component: Modules },
       { path: 'history', Component: History },

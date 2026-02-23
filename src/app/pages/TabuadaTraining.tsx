@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   TabuadaConfig,
   Problem,
-  generateProblems,
   getOperationName,
   getOperationSymbol,
   getLevel,
@@ -14,28 +13,32 @@ import {
   TimerMode,
   ProMode,
   adjustTimer,
-  generatePrecisionProblems,
+  generateProblems,
 } from '../utils/tabuadaEngine';
 import { useSession } from '../../hooks/useSession';
 import { adaptiveService } from '../../services/adaptive.service';
 import { userService } from '../../services/user.service';
 import { Loader2 } from 'lucide-react';
 import { Breadcrumb } from '../components/Breadcrumb';
+import {
+  buildJourneyContext,
+  getLessonLabel,
+  getModuleFromConceptId,
+} from '../utils/moduleContext';
+import type { ModuleJourneyContext } from '../utils/moduleContext';
+import {
+  createConceptLessonEngine,
+  lessonNumberToConceptMode,
+} from '../utils/conceptLessonEngine';
+import { trackFlowEvent } from '../utils/flowTelemetry';
 
-// Mapeia conceptId → módulo para o breadcrumb
-function getModuleFromConceptId(id: number): { name: string; slug: string } | null {
-  if (id >= 1  && id <= 8)  return { name: 'Fundacional',  slug: 'foundational' }
-  if (id >= 9  && id <= 15) return { name: 'Consolidação', slug: 'consolidation' }
-  if (id >= 16 && id <= 18) return { name: 'Automação',    slug: 'automacao' }
-  if (id >= 19 && id <= 21) return { name: 'Ritmo',        slug: 'ritmo' }
-  if (id >= 22 && id <= 24) return { name: 'Precisão',     slug: 'precisao' }
-  return null
-}
 
 export default function TabuadaTraining() {
   const navigate = useNavigate();
   const location = useLocation();
   const inputRef = useRef<HTMLInputElement>(null);
+  const trainingOpenedAtRef = useRef<number>(Date.now());
+  const lessonReadyTrackedRef = useRef(false);
 
   // Parâmetros de URL (modo guiado vindo dos Módulos)
   const [searchParams] = useSearchParams();
@@ -44,6 +47,11 @@ export default function TabuadaTraining() {
 
   // Config pode vir de location.state (Setup) ou ser construída async (Módulos direto)
   const stateConfig = (location.state as any)?.config as TabuadaConfig | undefined;
+  const stateModuleJourney = (location.state as any)?.moduleJourney as ModuleJourneyContext | undefined;
+  const inferredJourney = conceptId && lessonNumber ? buildJourneyContext(conceptId, lessonNumber) : null;
+  const moduleJourney = stateModuleJourney ?? inferredJourney;
+  const moduleIdForSession =
+    moduleJourney?.moduleId ?? (conceptId ? getModuleFromConceptId(conceptId)?.id ?? null : null);
 
   // Deriva o PRO mode a partir do conceptId (estável durante toda a sessão)
   const proMode: ProMode | null = (() => {
@@ -56,14 +64,54 @@ export default function TabuadaTraining() {
 
   const { startSession, recordAttempt, finishSession, saving, saveError } = useSession();
 
+  const resolveConceptConfig = (
+    cfg: TabuadaConfig,
+    currentConceptId: number,
+    currentLessonNumber: number,
+    currentModuleId: string | null,
+    currentProMode: ProMode | null
+  ): { config: TabuadaConfig; problems: Problem[] } => {
+    const lessonOutput = createConceptLessonEngine({
+      moduleId: currentModuleId ?? 'foundational',
+      conceptId: currentConceptId,
+      lessonNumber: (currentLessonNumber === 1 || currentLessonNumber === 2 || currentLessonNumber === 3
+        ? currentLessonNumber
+        : 1) as 1 | 2 | 3,
+      mode: lessonNumberToConceptMode(currentLessonNumber),
+      difficultyTier: Math.min(4, Math.max(1, getLevel(cfg))) as 1 | 2 | 3 | 4,
+      adaptiveProfile: {
+        mode: cfg.mode,
+        timerMode: currentProMode === 'rhythm' ? 'timed' : cfg.timerMode,
+        proMode: currentProMode,
+      },
+    });
+
+    return {
+      config: {
+        ...cfg,
+        operation: lessonOutput.lessonPlan.operation,
+        base: lessonOutput.lessonPlan.base,
+        timerMode: lessonOutput.timerPolicy.timerMode,
+      },
+      problems: lessonOutput.questionSet,
+    };
+  };
+
   const [resolvedConfig, setResolvedConfig] = useState<TabuadaConfig | null>(stateConfig ?? null);
   const [configLoading, setConfigLoading] = useState(!stateConfig && !!conceptId);
   const [problems, setProblems] = useState<Problem[]>(() => {
     if (!stateConfig) return [];
-    if (proMode === 'precision') {
-      const conceptDef = conceptId ? CONCEPT_CONFIG_MAP[conceptId] : null;
-      if (conceptDef) return generatePrecisionProblems(conceptDef.base);
+
+    if (conceptId) {
+      return resolveConceptConfig(
+        stateConfig,
+        conceptId,
+        lessonNumber ?? 1,
+        moduleIdForSession,
+        proMode
+      ).problems;
     }
+
     return generateProblems(stateConfig);
   });
 
@@ -72,6 +120,10 @@ export default function TabuadaTraining() {
   // Refs para dados mutáveis — evita problemas de closures em handlers assíncronos
   const timesRef = useRef<number[]>([]);
   const correctCountRef = useRef(0);
+
+  // Declarados aqui para evitar TDZ no dep array do useEffect abaixo
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const currentProblem = problems[currentIndex];
 
   // Guard PRO: redirecionar para /pro se conceptId >= 16 e usuário não é Pro
   useEffect(() => {
@@ -87,11 +139,51 @@ export default function TabuadaTraining() {
   }, [conceptId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (!moduleJourney) return;
+    trackFlowEvent('module_training_opened', {
+      moduleId: moduleJourney.moduleId,
+      moduleName: moduleJourney.moduleName,
+      conceptId: moduleJourney.conceptId,
+      conceptName: moduleJourney.conceptName,
+      lessonNumber: moduleJourney.lessonNumber,
+    });
+  }, [moduleJourney]);
+
+  useEffect(() => {
+    if (!moduleJourney || configLoading || !resolvedConfig || !currentProblem) return;
+    if (lessonReadyTrackedRef.current) return;
+    lessonReadyTrackedRef.current = true;
+    const loadTimeMs = Date.now() - trainingOpenedAtRef.current;
+    trackFlowEvent('module_lesson_ready', {
+      moduleId: moduleJourney.moduleId,
+      moduleName: moduleJourney.moduleName,
+      conceptId: moduleJourney.conceptId,
+      conceptName: moduleJourney.conceptName,
+      lessonNumber: moduleJourney.lessonNumber,
+      loadTimeMs,
+      totalProblems: problems.length,
+      timerMode: resolvedConfig.timerMode,
+    });
+  }, [configLoading, currentProblem, moduleJourney, problems.length, resolvedConfig]);
+
+  useEffect(() => {
     // Caso 1: config veio via location.state (fluxo Setup → Training)
     if (stateConfig) {
+      const configToUse =
+        conceptId
+          ? resolveConceptConfig(
+              stateConfig,
+              conceptId,
+              lessonNumber ?? 1,
+              moduleIdForSession,
+              proMode
+            ).config
+          : stateConfig;
+      setResolvedConfig(configToUse);
+
       if (!sessionStartedRef.current) {
         sessionStartedRef.current = true;
-        startSession(stateConfig, conceptId, lessonNumber);
+        startSession(configToUse, conceptId, lessonNumber, moduleIdForSession);
       }
       return;
     }
@@ -106,24 +198,35 @@ export default function TabuadaTraining() {
     const conceptDef = CONCEPT_CONFIG_MAP[conceptId] ?? { operation: 'multiplication' as const, base: 7 };
 
     adaptiveService.getRecommendation(conceptId).then(rec => {
-      const cfg: TabuadaConfig = {
+      const adaptiveConfig: TabuadaConfig = {
         operation: conceptDef.operation,
         base: conceptDef.base,
         mode: (rec?.mode ?? 'sequential') as Mode,
         timerMode: (rec?.timer_mode ?? 'untimed') as TimerMode,
       };
-      setResolvedConfig(cfg);
-      // Precision mode: problemas alternando multiplicação/divisão
-      if (proMode === 'precision') {
-        setProblems(generatePrecisionProblems(conceptDef.base));
-      } else {
-        setProblems(generateProblems(cfg));
-      }
+      const withConceptEngine =
+        conceptId != null
+          ? resolveConceptConfig(
+              adaptiveConfig,
+              conceptId,
+              lessonNumber ?? 1,
+              moduleIdForSession,
+              proMode
+            )
+          : { config: adaptiveConfig, problems: generateProblems(adaptiveConfig) };
+
+      setResolvedConfig(withConceptEngine.config);
+      setProblems(withConceptEngine.problems);
       setConfigLoading(false);
 
       if (!sessionStartedRef.current) {
         sessionStartedRef.current = true;
-        startSession(cfg, conceptId, lessonNumber);
+        startSession(
+          withConceptEngine.config,
+          conceptId,
+          lessonNumber,
+          moduleIdForSession
+        );
       }
     }).catch(() => {
       navigate('/tabuada/setup');
@@ -132,7 +235,6 @@ export default function TabuadaTraining() {
 
   // ─── Estado da sessão ────────────────────────────────────────
 
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
@@ -153,7 +255,6 @@ export default function TabuadaTraining() {
   const [answeredCount, setAnsweredCount] = useState(0);
   const [showStructureAlert, setShowStructureAlert] = useState(false);
 
-  const currentProblem = problems[currentIndex];
   const totalProblems = problems.length;
   const level = resolvedConfig ? getLevel(resolvedConfig) : 1;
 
@@ -224,12 +325,34 @@ export default function TabuadaTraining() {
     setSessionComplete(true);
     const { metrics, analysis, result } = await finishSession(finalCorrectCount, totalProblems, finalTimes);
 
+    if (moduleJourney) {
+      trackFlowEvent('module_lesson_completed', {
+        moduleId: moduleJourney.moduleId,
+        moduleName: moduleJourney.moduleName,
+        conceptId: moduleJourney.conceptId,
+        conceptName: moduleJourney.conceptName,
+        lessonNumber: moduleJourney.lessonNumber,
+        sessionId: result?.session_id ?? null,
+        sessionStatus: analysis.status,
+        precisionPct: metrics.precision,
+      });
+    }
+
     if (result?.new_status === 'mastered') {
       console.log('[analytics] concept_mastered', { conceptId, lessonNumber });
     }
 
     navigate('/tabuada/result', {
-      state: { metrics, analysis, config: resolvedConfig, conceptId, lessonNumber, proMode, result },
+      state: {
+        metrics,
+        analysis,
+        config: resolvedConfig,
+        conceptId,
+        lessonNumber,
+        proMode,
+        result,
+        moduleJourney,
+      },
     });
   };
 
@@ -357,11 +480,28 @@ export default function TabuadaTraining() {
   };
 
   const handleExit = () => {
-    if (conceptId) {
-      navigate(-1);
-    } else {
-      navigate('/tabuada/setup');
+    if (moduleJourney) {
+      trackFlowEvent('module_training_exit_to_module', {
+        moduleId: moduleJourney.moduleId,
+        moduleName: moduleJourney.moduleName,
+        conceptId: moduleJourney.conceptId,
+        lessonNumber: moduleJourney.lessonNumber,
+      });
+      navigate(`/modules/${moduleJourney.moduleId}`);
+      return;
     }
+
+    if (conceptId) {
+      const module = getModuleFromConceptId(conceptId);
+      if (module) {
+        navigate(`/modules/${module.id}`);
+        return;
+      }
+      navigate(-1);
+      return;
+    }
+
+    navigate('/tabuada/setup');
   };
 
   // ─── Loading ─────────────────────────────────────────────────
@@ -405,13 +545,16 @@ export default function TabuadaTraining() {
         {conceptId ? (
           <Breadcrumb
             items={(() => {
-              const mod = getModuleFromConceptId(conceptId)
+              const journey = moduleJourney ?? (conceptId && lessonNumber ? buildJourneyContext(conceptId, lessonNumber) : null)
               return [
-                { label: 'Módulos', href: '/modules' },
-                ...(mod
-                  ? [{ label: `${mod.name} — Aula ${lessonNumber ?? 1}`, href: `/modules/${mod.slug}` }]
+                { label: 'Modulos', href: '/modules' },
+                ...(journey
+                  ? [{ label: journey.moduleName, href: `/modules/${journey.moduleId}` }]
                   : []),
-                { label: 'Treino' },
+                ...(journey
+                  ? [{ label: journey.conceptName }]
+                  : []),
+                { label: `Aula ${lessonNumber ?? 1} - ${getLessonLabel(lessonNumber ?? 1)}` },
               ]
             })()}
           />

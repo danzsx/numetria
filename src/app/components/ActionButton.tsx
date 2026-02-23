@@ -1,16 +1,16 @@
 interface ActionButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'ghost';
+  variant?: 'primary' | 'ghost' | 'secondary';
   children: React.ReactNode;
 }
 
-export function ActionButton({ 
-  variant = 'primary', 
-  children, 
+export function ActionButton({
+  variant = 'primary',
+  children,
   className = "",
-  ...props 
+  ...props
 }: ActionButtonProps) {
   const baseStyles = "px-6 py-3 rounded-[var(--radius-technical)] font-[family-name:var(--font-prose)] font-medium transition-all duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]";
-  
+
   const variantStyles = {
     primary: `
       bg-[var(--nm-accent-primary)] 
@@ -25,11 +25,19 @@ export function ActionButton({
       hover:border-[var(--nm-accent-primary)]
       hover:text-[var(--nm-accent-primary)]
       active:scale-[0.98]
+    `,
+    secondary: `
+      bg-transparent
+      border border-[var(--nm-accent-primary)]
+      text-[var(--nm-accent-primary)]
+      hover:bg-[var(--nm-accent-primary)]
+      hover:text-[var(--nm-bg-main)]
+      active:scale-[0.98]
     `
   };
 
   return (
-    <button 
+    <button
       className={`${baseStyles} ${variantStyles[variant]} ${className}`}
       {...props}
     >
